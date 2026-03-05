@@ -1,0 +1,117 @@
+from datetime import date
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.database import get_db
+from app.core.dependencies import get_current_user, get_hr
+from app.models.attendance import AttendanceStatus
+from app.models.user import User
+from app.schemas.attendance import (
+    AttendanceCreate,
+    AttendanceOut,
+    AttendanceUpdate,
+    AttendanceSummary,
+    CheckInRequest,
+    CheckOutRequest,
+    PaginatedAttendance,
+)
+from app.services import attendance_service
+
+router = APIRouter(prefix="/api/attendance", tags=["Attendance"])
+
+
+@router.get("", response_model=PaginatedAttendance)
+async def list_attendance(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    employee_id: int | None = Query(None),
+    branch_id: int | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    status: AttendanceStatus | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_hr),
+):
+    total, items = await attendance_service.get_attendances(
+        db, page, size, employee_id, branch_id, date_from, date_to, status
+    )
+    return PaginatedAttendance(total=total, page=page, size=size, items=items)
+
+
+@router.post("", response_model=AttendanceOut, status_code=201)
+async def create_attendance(
+    data: AttendanceCreate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_hr),
+):
+    return await attendance_service.create_attendance(db, data)
+
+
+@router.post("/check-in", response_model=AttendanceOut)
+async def check_in(
+    data: CheckInRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    return await attendance_service.check_in(db, data)
+
+
+@router.post("/check-out", response_model=AttendanceOut)
+async def check_out(
+    data: CheckOutRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    try:
+        return await attendance_service.check_out(db, data)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/summary", response_model=AttendanceSummary)
+async def get_summary(
+    employee_id: int = Query(...),
+    year: int = Query(...),
+    month: int = Query(..., ge=1, le=12),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_hr),
+):
+    return await attendance_service.get_summary(db, employee_id, year, month)
+
+
+@router.get("/{attendance_id}", response_model=AttendanceOut)
+async def get_attendance(
+    attendance_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_hr),
+):
+    record = await attendance_service.get_attendance(db, attendance_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Attendance not found")
+    return record
+
+
+@router.patch("/{attendance_id}", response_model=AttendanceOut)
+async def update_attendance(
+    attendance_id: int,
+    data: AttendanceUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_hr),
+):
+    record = await attendance_service.get_attendance(db, attendance_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Attendance not found")
+    return await attendance_service.update_attendance(db, record, data)
+
+
+@router.delete("/{attendance_id}", status_code=204)
+async def delete_attendance(
+    attendance_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_hr),
+):
+    record = await attendance_service.get_attendance(db, attendance_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Attendance not found")
+    await attendance_service.delete_attendance(db, record)

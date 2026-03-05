@@ -6,7 +6,11 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
-from app.routers import auth
+from app.routers import (
+    auth, branches, departments, employees,
+    attendance, salary, bonuses, deductions,
+    kpi, leaves, dashboard, telegram,
+)
 
 
 @asynccontextmanager
@@ -34,6 +38,17 @@ register_exception_handlers(app)
 
 # Routers
 app.include_router(auth.router)
+app.include_router(branches.router)
+app.include_router(departments.router)
+app.include_router(employees.router)
+app.include_router(attendance.router)
+app.include_router(salary.router)
+app.include_router(bonuses.router)
+app.include_router(deductions.router)
+app.include_router(kpi.router)
+app.include_router(leaves.router)
+app.include_router(dashboard.router)
+app.include_router(telegram.router)
 
 
 @app.get("/health", tags=["Health"])

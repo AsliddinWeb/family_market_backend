@@ -1,4 +1,8 @@
+from zoneinfo import ZoneInfo
+
 from pydantic_settings import BaseSettings
+
+TZ = ZoneInfo("Asia/Tashkent")
 
 
 class Settings(BaseSettings):
@@ -19,7 +23,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
-        extra = "ignore"  # .env dagi ortiqcha fieldlarni e'tiborsiz qoldiradi
+        extra = "ignore"
 
 
 settings = Settings()
