@@ -29,3 +29,5 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(hour=22, minute=0, day_of_month="28"),
     },
 }
+
+celery_app.conf.broker_connection_retry_on_startup = True

@@ -1,6 +1,7 @@
 import asyncio
-from datetime import date
+from datetime import datetime
 
+from app.core.config import TZ
 from app.tasks.celery_app import celery_app
 
 
@@ -27,9 +28,9 @@ async def _generate_monthly_salaries_async():
     from app.models.employee import Employee
     from app.models.salary import Bonus, Deduction, SalaryRecord, SalaryStatus
 
-    today = date.today()
-    year = today.year
-    month = today.month
+    now = datetime.now(tz=TZ)
+    year = now.year
+    month = now.month
 
     async with AsyncSessionLocal() as db:
         employees = (await db.execute(
@@ -43,7 +44,6 @@ async def _generate_monthly_salaries_async():
         skipped = 0
 
         for emp in employees:
-            # Allaqachon mavjudmi?
             existing = await db.scalar(
                 select(SalaryRecord).where(
                     SalaryRecord.employee_id == emp.id,
@@ -55,7 +55,6 @@ async def _generate_monthly_salaries_async():
                 skipped += 1
                 continue
 
-            # Bonus va deductionlarni yig'ish
             bonuses = (await db.execute(
                 select(Bonus).where(
                     Bonus.employee_id == emp.id,
@@ -101,9 +100,7 @@ async def _generate_monthly_salaries_async():
 
 @celery_app.task(name="app.tasks.salary_tasks.send_salary_notifications")
 def send_salary_notifications(salary_record_id: int):
-    """
-    Maosh to'langanda xodimga Telegram xabar yuborish.
-    """
+    """Maosh to'langanda xodimga Telegram xabar yuborish."""
     return run_async(_send_salary_notification_async(salary_record_id))
 
 

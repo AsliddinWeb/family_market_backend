@@ -37,6 +37,8 @@ services:
     depends_on:
       - postgres
       - redis
+    volumes:
+      - ./app:/app/app
     command: celery -A app.tasks.celery_app worker --loglevel=info
 
   celery_beat:
@@ -45,6 +47,8 @@ services:
     depends_on:
       - postgres
       - redis
+    volumes:
+      - ./app:/app/app
     command: celery -A app.tasks.celery_app beat --loglevel=info
 
 volumes:

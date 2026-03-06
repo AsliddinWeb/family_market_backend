@@ -1,10 +1,12 @@
-from datetime import date
+from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import TZ
 from app.core.database import get_db
+
 from app.core.dependencies import get_hr
 from app.models.attendance import Attendance, AttendanceStatus
 from app.models.employee import Employee
@@ -32,9 +34,10 @@ async def get_dashboard(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_hr),
 ):
-    today = date.today()
-    current_year = today.year
-    current_month = today.month
+    now = datetime.now(tz=TZ)
+    today = now.date()
+    current_year = now.year
+    current_month = now.month
 
     total_employees = await db.scalar(
         select(func.count(Employee.id)).where(Employee.is_deleted == False)
@@ -44,7 +47,6 @@ async def get_dashboard(
             Employee.is_deleted == False, Employee.is_active == True
         )
     )
-
     today_present = await db.scalar(
         select(func.count(Attendance.id)).where(
             Attendance.date == today,
@@ -66,9 +68,7 @@ async def get_dashboard(
         select(func.count(Leave.id)).where(Leave.status == LeaveStatus.pending)
     )
     draft_salaries = await db.scalar(
-        select(func.count(SalaryRecord.id)).where(
-            SalaryRecord.status == SalaryStatus.draft
-        )
+        select(func.count(SalaryRecord.id)).where(SalaryRecord.status == SalaryStatus.draft)
     )
     paid_salaries_this_month = await db.scalar(
         select(func.count(SalaryRecord.id)).where(

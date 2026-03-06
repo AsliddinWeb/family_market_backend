@@ -1,11 +1,12 @@
-from datetime import date, time
+from calendar import monthrange
+from datetime import datetime, time
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import TZ
 from app.models.attendance import Attendance, AttendanceSource, AttendanceStatus
-from app.models.branch import Branch
 from app.models.employee import Employee
 from app.schemas.attendance import (
     AttendanceCreate,
@@ -22,8 +23,8 @@ async def get_attendances(
     size: int,
     employee_id: int | None,
     branch_id: int | None,
-    date_from: date | None,
-    date_to: date | None,
+    date_from,
+    date_to,
     status: AttendanceStatus | None,
 ) -> tuple[int, list[Attendance]]:
     q = select(Attendance).options(selectinload(Attendance.employee))
@@ -52,9 +53,7 @@ async def get_attendance(db: AsyncSession, attendance_id: int) -> Attendance | N
     )
 
 
-async def get_by_employee_date(
-    db: AsyncSession, employee_id: int, d: date
-) -> Attendance | None:
+async def get_by_employee_date(db: AsyncSession, employee_id: int, d) -> Attendance | None:
     return await db.scalar(
         select(Attendance).where(
             Attendance.employee_id == employee_id,
@@ -87,11 +86,9 @@ async def delete_attendance(db: AsyncSession, record: Attendance) -> None:
 
 
 async def check_in(db: AsyncSession, data: CheckInRequest) -> Attendance:
-    """Bugungi check-in. Agar mavjud bo'lsa — update qiladi."""
-    today = date.today()
+    today = datetime.now(tz=TZ).date()
     record = await get_by_employee_date(db, data.employee_id, today)
 
-    # Kech kelganmi? Branch work_start_time bilan solishtirish
     late_minutes = 0
     employee = await db.scalar(
         select(Employee).options(selectinload(Employee.branch))
@@ -131,7 +128,7 @@ async def check_in(db: AsyncSession, data: CheckInRequest) -> Attendance:
 
 
 async def check_out(db: AsyncSession, data: CheckOutRequest) -> Attendance:
-    today = date.today()
+    today = datetime.now(tz=TZ).date()
     record = await get_by_employee_date(db, data.employee_id, today)
     if not record:
         raise ValueError("Check-in topilmadi")
@@ -150,11 +147,10 @@ async def get_summary(
     year: int,
     month: int,
 ) -> AttendanceSummary:
-    from calendar import monthrange
-    from datetime import date as dt
+    from datetime import date as date_type
 
-    first_day = dt(year, month, 1)
-    last_day = dt(year, month, monthrange(year, month)[1])
+    first_day = date_type(year, month, 1)
+    last_day = date_type(year, month, monthrange(year, month)[1])
 
     records = (await db.execute(
         select(Attendance).where(

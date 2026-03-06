@@ -1,11 +1,11 @@
 import asyncio
-from datetime import date
+from datetime import datetime
 
+from app.core.config import TZ
 from app.tasks.celery_app import celery_app
 
 
 def run_async(coro):
-    """Celery sync context ichida async funksiya ishlatish uchun."""
     loop = asyncio.new_event_loop()
     try:
         return loop.run_until_complete(coro)
@@ -28,15 +28,13 @@ async def _mark_absent_employees_async():
     from app.models.attendance import Attendance, AttendanceStatus, AttendanceSource
     from app.models.employee import Employee
 
-    today = date.today()
+    today = datetime.now(tz=TZ).date()
 
     async with AsyncSessionLocal() as db:
-        # Bugun attendance yozuvi bor xodimlar
         marked_ids = (await db.execute(
             select(Attendance.employee_id).where(Attendance.date == today)
         )).scalars().all()
 
-        # Aktiv xodimlar — yozuv yo'qlar
         employees = (await db.execute(
             select(Employee).where(
                 Employee.is_active == True,
