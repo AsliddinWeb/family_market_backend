@@ -30,7 +30,12 @@ async def list_employees(
     total, items = await employee_service.get_employees(
         db, page, size, branch_id, department_id, is_active, search
     )
-    return PaginatedEmployees(total=total, page=page, size=size, items=items)
+    return PaginatedEmployees(
+        total=total,
+        page=page,
+        size=size,
+        items=[_to_out(emp) for emp in items],
+    )
 
 
 @router.post("", response_model=EmployeeOut, status_code=201)
@@ -127,14 +132,17 @@ def _to_out(emp) -> dict:
         "phone": emp.user.phone,
         "role": emp.user.role,
         "branch_id": emp.branch_id,
+        "branch": {"id": emp.branch.id, "name": emp.branch.name} if emp.branch else None,
         "department_id": emp.department_id,
+        "department": {"id": emp.department.id, "name": emp.department.name} if emp.department else None,
         "position": emp.position,
         "employment_type": emp.employment_type,
-        "hire_date": emp.hire_date,
+        "hire_date": str(emp.hire_date) if emp.hire_date else None,
         "base_salary": emp.base_salary,
         "telegram_user_id": emp.telegram_user_id,
         "photo": emp.photo,
         "is_active": emp.is_active,
+        "created_at": str(emp.created_at),
     }
 
 
