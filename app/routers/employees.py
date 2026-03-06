@@ -30,12 +30,11 @@ async def list_employees(
     total, items = await employee_service.get_employees(
         db, page, size, branch_id, department_id, is_active, search
     )
-    return PaginatedEmployees(
-        total=total,
-        page=page,
-        size=size,
-        items=[_to_out(emp) for emp in items],
-    )
+    result = []
+    for emp in items:
+        await db.refresh(emp, ["user", "branch", "department"])
+        result.append(_to_out(emp))
+    return PaginatedEmployees(total=total, page=page, size=size, items=result)
 
 
 @router.post("", response_model=EmployeeOut, status_code=201)
@@ -126,23 +125,31 @@ async def delete_employee(
 
 def _to_out(emp) -> dict:
     return {
-        "id": emp.id,
-        "user_id": emp.user_id,
-        "full_name": emp.user.full_name,
-        "phone": emp.user.phone,
-        "role": emp.user.role,
-        "branch_id": emp.branch_id,
-        "branch": {"id": emp.branch.id, "name": emp.branch.name} if emp.branch else None,
+        "id":               emp.id,
+        "user_id":          emp.user_id,
+        "full_name":        emp.user.full_name,
+        "phone":            emp.user.phone,
+        "role":             emp.user.role,
+        "branch_id":        emp.branch_id,
+        "branch": {
+            "id":        emp.branch.id,
+            "name":      emp.branch.name,
+            "is_active": emp.branch.is_active,
+        } if emp.branch else None,
         "department_id": emp.department_id,
-        "department": {"id": emp.department.id, "name": emp.department.name} if emp.department else None,
-        "position": emp.position,
-        "employment_type": emp.employment_type,
-        "hire_date": str(emp.hire_date) if emp.hire_date else None,
-        "base_salary": emp.base_salary,
+        "department": {
+            "id":        emp.department.id,
+            "name":      emp.department.name,
+            "branch_id": emp.department.branch_id,
+            "is_active": emp.department.is_active,
+        } if emp.department else None,
+        "position":         emp.position,
+        "employment_type":  emp.employment_type,
+        "hire_date":        str(emp.hire_date) if emp.hire_date else None,
+        "base_salary":      emp.base_salary,
         "telegram_user_id": emp.telegram_user_id,
-        "photo": emp.photo,
-        "is_active": emp.is_active,
-        "created_at": str(emp.created_at),
+        "photo":            emp.photo,
+        "is_active":        emp.is_active,
     }
 
 

@@ -62,26 +62,26 @@ class EmployeeOut(BaseModel):
     full_name: str
     phone: str
     role: UserRole
-    branch_id: int
-    department_id: int
-    position: str
+    branch_id: int | None = None
+    department_id: int | None = None
+    position: str | None = None
     employment_type: EmploymentType
-    hire_date: date
+    hire_date: date | None = None
     base_salary: Decimal
-    telegram_user_id: str | None
-    photo: str | None
+    telegram_user_id: str | None = None
+    photo: str | None = None
     is_active: bool
 
     model_config = {"from_attributes": True}
 
 
 class EmployeeDetail(EmployeeOut):
-    branch: BranchShort
-    department: DepartmentShort
+    branch: BranchShort | None = None
+    department: DepartmentShort | None = None
 
 
 class PaginatedEmployees(BaseModel):
     total: int
     page: int
     size: int
-    items: list[EmployeeOut]
+    items: list[EmployeeDetail]  # EmployeeOut → EmployeeDetail
