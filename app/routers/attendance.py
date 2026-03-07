@@ -1,12 +1,14 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_hr
 from app.models.attendance import AttendanceStatus
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.attendance import (
     AttendanceCreate,
     AttendanceOut,
@@ -32,8 +34,18 @@ async def list_attendance(
     date_to: date | None = Query(None),
     status: AttendanceStatus | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_hr),
+    current_user: User = Depends(get_current_user),
 ):
+    # employee roli faqat o'z davomatini ko'ra oladi
+    if current_user.role == UserRole.employee:
+        user_with_emp = await db.scalar(
+            select(User).options(selectinload(User.employee)).where(User.id == current_user.id)
+        )
+        if user_with_emp and user_with_emp.employee:
+            employee_id = user_with_emp.employee.id
+        else:
+            return PaginatedAttendance(total=0, page=page, size=size, items=[])
+
     total, items = await attendance_service.get_attendances(
         db, page, size, employee_id, branch_id, date_from, date_to, status
     )
@@ -80,8 +92,17 @@ async def get_summary(
     year: int = Query(...),
     month: int = Query(..., ge=1, le=12),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_hr),
+    current_user: User = Depends(get_current_user),
 ):
+    # employee faqat o'zini ko'ra oladi
+    if current_user.role == UserRole.employee:
+        user_with_emp = await db.scalar(
+            select(User).options(selectinload(User.employee)).where(User.id == current_user.id)
+        )
+        if user_with_emp and user_with_emp.employee:
+            employee_id = user_with_emp.employee.id
+        else:
+            raise HTTPException(status_code=403, detail="Employee profil topilmadi")
     return await attendance_service.get_summary(db, employee_id, year, month)
 
 

@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_hr
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.kpi import (
     KPICreate, KPIOut, KPIUpdate, KPISummary,
     KPITemplateCreate, KPITemplateOut, KPITemplateUpdate,
@@ -22,8 +24,18 @@ async def list_kpis(
     year: int | None = Query(None),
     month: int | None = Query(None, ge=1, le=12),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_hr),
+    current_user: User = Depends(get_current_user),
 ):
+    # employee faqat o'z KPIini ko'radi
+    if current_user.role == UserRole.employee:
+        user_with_emp = await db.scalar(
+            select(User).options(selectinload(User.employee)).where(User.id == current_user.id)
+        )
+        if user_with_emp and user_with_emp.employee:
+            employee_id = user_with_emp.employee.id
+        else:
+            return PaginatedKPI(total=0, page=page, size=size, items=[])
+
     total, items = await kpi_service.get_kpis(db, page, size, employee_id, year, month)
     return PaginatedKPI(
         total=total, page=page, size=size,
@@ -47,8 +59,17 @@ async def get_summary(
     year: int = Query(...),
     month: int = Query(..., ge=1, le=12),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_hr),
+    current_user: User = Depends(get_current_user),
 ):
+    # employee faqat o'zini ko'radi
+    if current_user.role == UserRole.employee:
+        user_with_emp = await db.scalar(
+            select(User).options(selectinload(User.employee)).where(User.id == current_user.id)
+        )
+        if user_with_emp and user_with_emp.employee:
+            employee_id = user_with_emp.employee.id
+        else:
+            raise HTTPException(status_code=403, detail="Employee profil topilmadi")
     return await kpi_service.get_kpi_summary(db, employee_id, year, month)
 
 
