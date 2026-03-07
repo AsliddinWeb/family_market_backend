@@ -46,7 +46,9 @@ async def create_salary_record(
         record = await salary_service.create_salary_record(db, data, current_user.id)
         return SalaryRecordOut.from_orm_with_net(record)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        msg = str(e)
+        status_code = 409 if "already exists" in msg else 400
+        raise HTTPException(status_code=status_code, detail=msg)
 
 
 @router.get("/{record_id}", response_model=SalaryRecordOut)

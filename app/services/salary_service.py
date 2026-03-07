@@ -58,6 +58,17 @@ async def create_salary_record(
     if not employee:
         raise ValueError("Employee not found")
 
+    # Duplicate tekshiruv
+    existing = await db.scalar(
+        select(SalaryRecord).where(
+            SalaryRecord.employee_id == data.employee_id,
+            SalaryRecord.period_year == data.period_year,
+            SalaryRecord.period_month == data.period_month,
+        )
+    )
+    if existing:
+        raise ValueError(f"Salary record already exists for this period")
+
     # Shu oyning bonus va deductionlarini yig'ish
     bonuses = (await db.execute(
         select(Bonus).where(
