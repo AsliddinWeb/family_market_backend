@@ -30,11 +30,12 @@ async def list_employees(
     total, items = await employee_service.get_employees(
         db, page, size, branch_id, department_id, is_active, search
     )
-    result = []
-    for emp in items:
-        await db.refresh(emp, ["user", "branch", "department"])
-        result.append(_to_out(emp))
-    return PaginatedEmployees(total=total, page=page, size=size, items=result)
+    return PaginatedEmployees(
+        total=total,
+        page=page,
+        size=size,
+        items=[_to_out(emp) for emp in items],
+    )
 
 
 @router.post("", response_model=EmployeeOut, status_code=201)
@@ -59,7 +60,7 @@ async def create_employee(
             raise HTTPException(status_code=400, detail="Bu Telegram ID allaqachon mavjud")
 
     emp = await employee_service.create_employee(db, data)
-    await db.refresh(emp, ["user"])
+    emp = await employee_service.get_employee(db, emp.id)  # selectinload bor
     return _to_out(emp)
 
 
@@ -105,7 +106,7 @@ async def update_employee(
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
     updated = await employee_service.update_employee(db, emp, data)
-    await db.refresh(updated, ["user"])
+    updated = await employee_service.get_employee(db, updated.id)  # selectinload bor
     return _to_out(updated)
 
 

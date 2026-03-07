@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
@@ -25,8 +27,18 @@ async def refresh(data: RefreshSchema):
 
 
 @router.get("/me", response_model=UserOut)
-async def me(current_user: User = Depends(get_current_user)):
-    return current_user
+async def me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # employee relationship ni selectinload bilan yuklaymiz
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.employee))
+        .where(User.id == current_user.id)
+    )
+    user = result.scalar_one()
+    return user
 
 
 @router.patch("/change-password")

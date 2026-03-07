@@ -20,7 +20,11 @@ async def get_employees(
     q = (
         select(Employee)
         .join(Employee.user)
-        .options(selectinload(Employee.user))
+        .options(
+            selectinload(Employee.user),
+            selectinload(Employee.branch),
+            selectinload(Employee.department),
+        )
         .where(Employee.is_deleted == False, User.is_deleted == False)
     )
 

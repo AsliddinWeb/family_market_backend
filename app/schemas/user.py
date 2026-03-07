@@ -10,6 +10,7 @@ class UserOut(BaseModel):
     role: UserRole
     is_active: bool
     created_at: datetime
+    employee_id: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
