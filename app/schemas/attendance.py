@@ -4,6 +4,17 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.models.attendance import AttendanceSource, AttendanceStatus
+from app.schemas.branch import BranchShort
+
+
+class EmployeeShort(BaseModel):
+    id: int
+    full_name: str
+    phone: str
+    branch_id: int | None = None
+    branch: BranchShort | None = None
+
+    model_config = {"from_attributes": True}
 
 
 class AttendanceCreate(BaseModel):
@@ -47,6 +58,7 @@ class AttendanceOut(BaseModel):
     late_minutes: int
     source: AttendanceSource
     notes: str | None
+    employee: EmployeeShort | None = None
 
     model_config = {"from_attributes": True}
 

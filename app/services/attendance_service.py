@@ -27,7 +27,9 @@ async def get_attendances(
     date_to,
     status: AttendanceStatus | None,
 ) -> tuple[int, list[Attendance]]:
-    q = select(Attendance).options(selectinload(Attendance.employee))
+    q = select(Attendance).options(
+        selectinload(Attendance.employee).selectinload(Employee.branch)
+    )
 
     if employee_id:
         q = q.where(Attendance.employee_id == employee_id)
@@ -66,8 +68,12 @@ async def create_attendance(db: AsyncSession, data: AttendanceCreate) -> Attenda
     record = Attendance(**data.model_dump())
     db.add(record)
     await db.commit()
-    await db.refresh(record)
-    return record
+    result = await db.scalar(
+        select(Attendance)
+        .options(selectinload(Attendance.employee).selectinload(Employee.branch))
+        .where(Attendance.id == record.id)
+    )
+    return result
 
 
 async def update_attendance(
