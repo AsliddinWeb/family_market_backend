@@ -101,5 +101,5 @@ async def update_department(
 
 
 async def delete_department(db: AsyncSession, dept: Department) -> None:
-    dept.is_active = False
+    await db.delete(dept)
     await db.commit()
