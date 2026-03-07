@@ -28,7 +28,8 @@ async def get_attendances(
     status: AttendanceStatus | None,
 ) -> tuple[int, list[Attendance]]:
     q = select(Attendance).options(
-        selectinload(Attendance.employee).selectinload(Employee.branch)
+        selectinload(Attendance.employee).selectinload(Employee.branch),
+        selectinload(Attendance.employee).selectinload(Employee.user),
     )
 
     if employee_id:
@@ -70,7 +71,10 @@ async def create_attendance(db: AsyncSession, data: AttendanceCreate) -> Attenda
     await db.commit()
     result = await db.scalar(
         select(Attendance)
-        .options(selectinload(Attendance.employee).selectinload(Employee.branch))
+        .options(
+            selectinload(Attendance.employee).selectinload(Employee.branch),
+            selectinload(Attendance.employee).selectinload(Employee.user),
+        )
         .where(Attendance.id == record.id)
     )
     return result

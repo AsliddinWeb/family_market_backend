@@ -15,6 +15,7 @@ from app.schemas.attendance import (
     CheckInRequest,
     CheckOutRequest,
     PaginatedAttendance,
+    serialize_attendance,
 )
 from app.services import attendance_service
 
@@ -36,7 +37,10 @@ async def list_attendance(
     total, items = await attendance_service.get_attendances(
         db, page, size, employee_id, branch_id, date_from, date_to, status
     )
-    return PaginatedAttendance(total=total, page=page, size=size, items=items)
+    return PaginatedAttendance(
+        total=total, page=page, size=size,
+        items=[serialize_attendance(r) for r in items],
+    )
 
 
 @router.post("", response_model=AttendanceOut, status_code=201)
@@ -45,7 +49,8 @@ async def create_attendance(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_hr),
 ):
-    return await attendance_service.create_attendance(db, data)
+    rec = await attendance_service.create_attendance(db, data)
+    return serialize_attendance(rec)
 
 
 @router.post("/check-in", response_model=AttendanceOut)
