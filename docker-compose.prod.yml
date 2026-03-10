@@ -1,11 +1,4 @@
 services:
   api:
     ports:
-      - "127.0.0.1:8000:8000"
-
-  postgres:
-    ports:
-      - "127.0.0.1:5432:5432"
-
-  redis:
-    ports: []   # port bind yo'q — Docker network ichida ishlaydi
+      - "127.0.0.1:8010:8000"
