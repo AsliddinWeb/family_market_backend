@@ -1,0 +1,17 @@
+services:
+  api:
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app        # hot reload uchun
+      - ./alembic:/app/alembic
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  postgres:
+    ports:
+      - "5432:5432"           # DBeaver/pgAdmin uchun
+
+  redis:
+    ports:
+      - "6379:6379"
