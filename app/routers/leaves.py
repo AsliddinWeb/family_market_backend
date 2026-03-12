@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_hr
 from app.models.leave import LeaveStatus, LeaveType
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.leave import LeaveCreate, LeaveOut, LeaveStatusUpdate, PaginatedLeaves
 from app.services import leave_service
 
@@ -19,8 +21,18 @@ async def list_leaves(
     status: LeaveStatus | None = Query(None),
     leave_type: LeaveType | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_hr),
+    current_user: User = Depends(get_current_user),
 ):
+    # employee faqat o'z ta'tillarini ko'ra oladi
+    if current_user.role == UserRole.employee:
+        user_with_emp = await db.scalar(
+            select(User).options(selectinload(User.employee)).where(User.id == current_user.id)
+        )
+        if user_with_emp and user_with_emp.employee:
+            employee_id = user_with_emp.employee.id
+        else:
+            return PaginatedLeaves(total=0, page=page, size=size, items=[])
+
     total, items = await leave_service.get_leaves(
         db, page, size, employee_id, status, leave_type
     )

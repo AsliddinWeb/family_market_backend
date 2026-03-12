@@ -1,5 +1,7 @@
 from datetime import time
-from pydantic import BaseModel, field_validator
+from decimal import Decimal
+
+from pydantic import BaseModel
 
 
 class BranchCreate(BaseModel):
@@ -8,6 +10,10 @@ class BranchCreate(BaseModel):
     phone: str | None = None
     manager_id: int | None = None
     work_start_time: time = time(9, 0)
+    work_end_time: time = time(18, 0)
+    latitude: Decimal | None = None
+    longitude: Decimal | None = None
+    radius_meters: int = 200
     is_active: bool = True
 
 
@@ -17,6 +23,10 @@ class BranchUpdate(BaseModel):
     phone: str | None = None
     manager_id: int | None = None
     work_start_time: time | None = None
+    work_end_time: time | None = None
+    latitude: Decimal | None = None
+    longitude: Decimal | None = None
+    radius_meters: int | None = None
     is_active: bool | None = None
 
 
@@ -27,6 +37,10 @@ class BranchOut(BaseModel):
     phone: str | None
     manager_id: int | None
     work_start_time: time
+    work_end_time: time
+    latitude: Decimal | None
+    longitude: Decimal | None
+    radius_meters: int
     is_active: bool
 
     model_config = {"from_attributes": True}

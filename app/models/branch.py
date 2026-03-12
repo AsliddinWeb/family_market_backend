@@ -1,6 +1,7 @@
 from datetime import time
+from decimal import Decimal
 
-from sqlalchemy import Boolean, ForeignKey, String, Time
+from sqlalchemy import Boolean, ForeignKey, Numeric, String, Time, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -18,6 +19,13 @@ class Branch(Base, TimestampMixin, SoftDeleteMixin):
         ForeignKey("users.id"), nullable=True
     )
     work_start_time: Mapped[time] = mapped_column(Time, default=time(9, 0))
+    work_end_time: Mapped[time] = mapped_column(Time, default=time(18, 0))
+
+    # Geofence — filial joylashuvi va ruxsat berilgan radius
+    latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7), nullable=True)
+    longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7), nullable=True)
+    radius_meters: Mapped[int] = mapped_column(Integer, default=200)
+
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Relations

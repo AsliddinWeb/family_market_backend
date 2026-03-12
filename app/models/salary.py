@@ -3,6 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
@@ -10,7 +11,6 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
-    Boolean,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,7 +26,8 @@ class SalaryStatus(str, enum.Enum):
 
 class BonusType(str, enum.Enum):
     performance = "performance"
-    holiday = "holiday"
+    holiday = "holiday"       # Qo'lda berilgan bayram bonus
+    holiday_work = "holiday_work"  # Dam olish kunida ishlash (auto)
     extra = "extra"
 
 
@@ -69,6 +70,14 @@ class Bonus(Base, TimestampMixin):
     bonus_type: Mapped[BonusType] = mapped_column(default=BonusType.extra)
     period_year: Mapped[int] = mapped_column(Integer)
     period_month: Mapped[int] = mapped_column(Integer)
+    auto_generated: Mapped[bool] = mapped_column(
+        Boolean, default=False,
+        comment="True bo'lsa — tizim tomonidan avtomatik yaratilgan"
+    )
+    # Dam olish kuni bonusi uchun qaysi attendance ga bog'liq
+    attendance_id: Mapped[int | None] = mapped_column(
+        ForeignKey("attendance.id"), nullable=True
+    )
     approved_by_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"), nullable=True
     )
@@ -89,6 +98,5 @@ class Deduction(Base, TimestampMixin):
     period_year: Mapped[int] = mapped_column(Integer)
     period_month: Mapped[int] = mapped_column(Integer)
     auto_generated: Mapped[bool] = mapped_column(Boolean, default=False)
-
     # Relations
     employee: Mapped["Employee"] = relationship(back_populates="deductions")

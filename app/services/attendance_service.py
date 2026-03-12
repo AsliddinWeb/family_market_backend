@@ -1,5 +1,7 @@
+import math
 from calendar import monthrange
 from datetime import datetime, time
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import TZ
 from app.models.attendance import Attendance, AttendanceSource, AttendanceStatus
 from app.models.employee import Employee
+from app.models.salary import Bonus, BonusType
 from app.schemas.attendance import (
     AttendanceCreate,
     AttendanceUpdate,
@@ -16,6 +19,78 @@ from app.schemas.attendance import (
     CheckOutRequest,
 )
 
+
+# ─── Geofence yordamchi ──────────────────────────────────────────────────────
+
+def haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Ikki nuqta orasidagi masofani metrda hisoblash (Haversine formula)"""
+    R = 6_371_000  # Yer radiusi metrda
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlam = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+
+def check_in_radius(branch, latitude: float, longitude: float) -> tuple[bool, float]:
+    """
+    Xodim filial radiusida ekanligini tekshiradi.
+    Returns: (is_inside, distance_meters)
+    """
+    if branch.latitude is None or branch.longitude is None:
+        return True, 0.0  # Filialda geo belgilanmagan — ruxsat beriladi
+    distance = haversine_meters(
+        float(branch.latitude), float(branch.longitude),
+        latitude, longitude,
+    )
+    return distance <= branch.radius_meters, distance
+
+
+# ─── Holiday bonus auto-create ───────────────────────────────────────────────
+
+async def _maybe_create_holiday_bonus(
+    db: AsyncSession,
+    employee: Employee,
+    attendance: Attendance,
+) -> Bonus | None:
+    """
+    Xodim dam olish kunida kelgan bo'lsa avtomatik bonus yaratadi.
+    Bir attendance uchun bir marta (attendance_id uniqueness tekshiriladi).
+    """
+    today = attendance.date
+    if not employee.is_off_day(today):
+        return None
+
+    # Allaqachon yaratilganmi?
+    existing = await db.scalar(
+        select(Bonus).where(
+            Bonus.attendance_id == attendance.id,
+            Bonus.bonus_type == BonusType.holiday_work,
+        )
+    )
+    if existing:
+        return None
+
+    # Soatlik stavka × ish soati
+    hourly = employee.get_effective_hourly_rate()
+    hours = Decimal(employee.work_hours_per_day)
+    amount = (hourly * hours).quantize(Decimal("0.01"))
+
+    bonus = Bonus(
+        employee_id=employee.id,
+        amount=amount,
+        reason=f"Dam olish kuni ishlash — {today.strftime('%d.%m.%Y')}",
+        bonus_type=BonusType.holiday_work,
+        period_year=today.year,
+        period_month=today.month,
+        auto_generated=True,
+        attendance_id=attendance.id,
+    )
+    db.add(bonus)
+    return bonus
+
+
+# ─── CRUD ────────────────────────────────────────────────────────────────────
 
 async def get_attendances(
     db: AsyncSession,
@@ -95,22 +170,55 @@ async def delete_attendance(db: AsyncSession, record: Attendance) -> None:
     await db.commit()
 
 
-async def check_in(db: AsyncSession, data: CheckInRequest) -> Attendance:
+async def check_in(
+    db: AsyncSession,
+    data: CheckInRequest,
+    skip_geo_check: bool = False,
+) -> Attendance:
     today = datetime.now(tz=TZ).date()
     record = await get_by_employee_date(db, data.employee_id, today)
 
-    late_minutes = 0
+    # Employee + branch yuklash
     employee = await db.scalar(
-        select(Employee).options(selectinload(Employee.branch))
+        select(Employee)
+        .options(selectinload(Employee.branch))
         .where(Employee.id == data.employee_id)
     )
-    if employee and employee.branch:
+    if not employee:
+        raise ValueError("Xodim topilmadi")
+
+    # Geofence tekshiruvi
+    if (
+        not skip_geo_check
+        and data.check_in_location
+        and employee.branch
+        and employee.branch.latitude is not None
+    ):
+        lat = data.check_in_location.get("latitude")
+        lon = data.check_in_location.get("longitude")
+        if lat and lon:
+            is_inside, distance = check_in_radius(employee.branch, lat, lon)
+            if not is_inside:
+                raise ValueError(
+                    f"Siz filialdan {distance:.0f}m uzoqdasiz. "
+                    f"Ruxsat berilgan radius: {employee.branch.radius_meters}m"
+                )
+
+    # Kechikish hisoblash
+    late_minutes = 0
+    if employee.branch:
         work_start: time = employee.branch.work_start_time
         ci: time = data.check_in_time
         if ci > work_start:
             late_minutes = (ci.hour * 60 + ci.minute) - (work_start.hour * 60 + work_start.minute)
 
-    status = AttendanceStatus.late if late_minutes > 0 else AttendanceStatus.present
+    # Dam olish kuni check
+    is_off = employee.is_off_day(today)
+    if is_off:
+        status = AttendanceStatus.holiday
+        late_minutes = 0  # Dam olish kunida kechikish hisoblanmaydi
+    else:
+        status = AttendanceStatus.late if late_minutes > 0 else AttendanceStatus.present
 
     if record:
         record.check_in_time = data.check_in_time
@@ -131,6 +239,12 @@ async def check_in(db: AsyncSession, data: CheckInRequest) -> Attendance:
             source=AttendanceSource.telegram,
         )
         db.add(record)
+
+    await db.flush()  # record.id olish uchun
+
+    # Dam olish kuni bo'lsa avtomatik bonus
+    if is_off:
+        await _maybe_create_holiday_bonus(db, employee, record)
 
     await db.commit()
     await db.refresh(record)

@@ -1,10 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+import os
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.dependencies import get_admin, get_current_user, get_hr
+from app.core.config import settings
 from app.models.employee import Employee as EmployeeModel
 from app.models.user import User, User as UserModel
 from app.schemas.employee import (
@@ -60,7 +64,7 @@ async def create_employee(
             raise HTTPException(status_code=400, detail="Bu Telegram ID allaqachon mavjud")
 
     emp = await employee_service.create_employee(db, data)
-    emp = await employee_service.get_employee(db, emp.id)  # selectinload bor
+    emp = await employee_service.get_employee(db, emp.id)
     return _to_out(emp)
 
 
@@ -106,8 +110,44 @@ async def update_employee(
     if not emp:
         raise HTTPException(status_code=404, detail="Employee not found")
     updated = await employee_service.update_employee(db, emp, data)
-    updated = await employee_service.get_employee(db, updated.id)  # selectinload bor
+    updated = await employee_service.get_employee(db, updated.id)
     return _to_out(updated)
+
+
+@router.post("/{employee_id}/photo", response_model=EmployeeOut)
+async def upload_photo(
+    employee_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_hr),
+):
+    emp = await employee_service.get_employee(db, employee_id)
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    if file.content_type not in ("image/jpeg", "image/png", "image/webp"):
+        raise HTTPException(status_code=400, detail="Faqat JPEG, PNG yoki WebP ruxsat etiladi")
+
+    ext      = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "jpg"
+    filename = f"employees/{employee_id}_{uuid.uuid4().hex}.{ext}"
+    filepath = os.path.join(settings.MEDIA_DIR, filename)
+
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    content = await file.read()
+    with open(filepath, "wb") as f:
+        f.write(content)
+
+    # Eski rasmni o'chirish
+    if emp.photo:
+        old_path = os.path.join(settings.MEDIA_DIR, emp.photo)
+        if os.path.exists(old_path):
+            os.remove(old_path)
+
+    emp.photo = filename
+    await db.commit()
+    await db.refresh(emp)
+    emp = await employee_service.get_employee(db, emp.id)
+    return _to_out(emp)
 
 
 @router.delete("/{employee_id}", status_code=204)
@@ -126,12 +166,12 @@ async def delete_employee(
 
 def _to_out(emp) -> dict:
     return {
-        "id":               emp.id,
-        "user_id":          emp.user_id,
-        "full_name":        emp.user.full_name,
-        "phone":            emp.user.phone,
-        "role":             emp.user.role,
-        "branch_id":        emp.branch_id,
+        "id":                 emp.id,
+        "user_id":            emp.user_id,
+        "full_name":          emp.user.full_name,
+        "phone":              emp.user.phone,
+        "role":               emp.user.role,
+        "branch_id":          emp.branch_id,
         "branch": {
             "id":        emp.branch.id,
             "name":      emp.branch.name,
@@ -144,19 +184,23 @@ def _to_out(emp) -> dict:
             "branch_id": emp.department.branch_id,
             "is_active": emp.department.is_active,
         } if emp.department else None,
-        "position":         emp.position,
-        "employment_type":  emp.employment_type,
-        "hire_date":        str(emp.hire_date) if emp.hire_date else None,
-        "base_salary":      emp.base_salary,
-        "telegram_user_id": emp.telegram_user_id,
-        "photo":            emp.photo,
-        "is_active":        emp.is_active,
+        "position":           emp.position,
+        "employment_type":    emp.employment_type,
+        "hire_date":          str(emp.hire_date) if emp.hire_date else None,
+        "base_salary":        emp.base_salary,
+        "hourly_rate":        emp.hourly_rate,
+        "work_hours_per_day": emp.work_hours_per_day,
+        "off_days":           emp.off_days,
+        "telegram_user_id":   emp.telegram_user_id,
+        "photo":              emp.photo,
+        "face_photo":         emp.face_photo,
+        "is_active":          emp.is_active,
     }
 
 
 def _to_detail(emp) -> dict:
     return {
         **_to_out(emp),
-        "branch": emp.branch,
+        "branch":     emp.branch,
         "department": emp.department,
     }

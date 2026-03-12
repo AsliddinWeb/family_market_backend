@@ -4,6 +4,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+# noqa: F401 — ensure all mappers are registered before first query
+import app.models  # noqa: F401
+
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.routers import (

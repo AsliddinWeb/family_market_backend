@@ -56,7 +56,6 @@ async def get_employee(db: AsyncSession, employee_id: int) -> Employee | None:
 
 
 async def create_employee(db: AsyncSession, data: EmployeeCreate) -> Employee:
-    # 1. User yaratish
     user = User(
         phone=data.phone,
         full_name=data.full_name,
@@ -64,9 +63,8 @@ async def create_employee(db: AsyncSession, data: EmployeeCreate) -> Employee:
         role=data.role,
     )
     db.add(user)
-    await db.flush()  # user.id ni olish uchun
+    await db.flush()
 
-    # 2. Employee yaratish
     employee = Employee(
         user_id=user.id,
         branch_id=data.branch_id,
@@ -75,8 +73,12 @@ async def create_employee(db: AsyncSession, data: EmployeeCreate) -> Employee:
         employment_type=data.employment_type,
         hire_date=data.hire_date,
         base_salary=data.base_salary,
+        hourly_rate=data.hourly_rate,
+        work_hours_per_day=data.work_hours_per_day,
+        off_days=data.off_days,
         telegram_user_id=data.telegram_user_id,
         photo=data.photo,
+        face_photo=data.face_photo,
     )
     db.add(employee)
     await db.commit()
@@ -90,7 +92,8 @@ async def update_employee(
 ) -> Employee:
     employee_fields = {
         "branch_id", "department_id", "position", "employment_type",
-        "hire_date", "base_salary", "telegram_user_id", "photo", "is_active"
+        "hire_date", "base_salary", "telegram_user_id", "photo", "is_active",
+        "hourly_rate", "work_hours_per_day", "off_days", "face_photo",
     }
     user_fields = {"full_name", "role"}
 
