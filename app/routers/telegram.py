@@ -7,6 +7,7 @@ import urllib.parse
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,16 @@ from app.services import attendance_service
 from app.services.telegram_service import delete_webhook, send_message, set_webhook
 
 router = APIRouter(prefix="/api/telegram", tags=["Telegram"])
+
+
+# ─── WebApp HTML serve ────────────────────────────────────────────────────────
+
+@router.get("/webapp/checkin", response_class=HTMLResponse)
+async def webapp_checkin_page():
+    with open("webapp/checkin.html", "r", encoding="utf-8") as f:
+        html = f.read()
+    html = html.replace("%%API_BASE%%", settings.BASE_URL)
+    return HTMLResponse(content=html)
 
 
 # ─── Webhook setup ────────────────────────────────────────────────────────────
@@ -40,30 +51,22 @@ async def remove_webhook(_: User = Depends(get_admin)):
 # ─── WebApp auth yordamchi ────────────────────────────────────────────────────
 
 def verify_telegram_webapp_data(init_data: str, bot_token: str) -> dict | None:
-    """
-    Telegram WebApp initData ni tekshiradi.
-    https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
-    Returns: parsed user dict yoki None (noto'g'ri bo'lsa)
-    """
     try:
         parsed = dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
         received_hash = parsed.pop("hash", None)
         if not received_hash:
             return None
 
-        # Data-check-string yaratish
         data_check_string = "\n".join(
             f"{k}={v}" for k, v in sorted(parsed.items())
         )
 
-        # Secret key = HMAC-SHA256(bot_token, "WebAppData")
         secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
         expected_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
         if not hmac.compare_digest(expected_hash, received_hash):
             return None
 
-        # User ma'lumotlarini parse qilish
         user_data = parsed.get("user")
         if user_data:
             return json.loads(user_data)
@@ -75,11 +78,11 @@ def verify_telegram_webapp_data(init_data: str, bot_token: str) -> dict | None:
 # ─── WebApp Check-in ──────────────────────────────────────────────────────────
 
 class WebAppCheckInRequest(BaseModel):
-    init_data: str          # Telegram WebApp.initData
-    photo_base64: str       # Base64 encoded JPEG
+    init_data: str
+    photo_base64: str
     latitude: float
     longitude: float
-    face_match_score: float = 0.0  # Frontend face-api.js dan kelgan score (0-1)
+    face_match_score: float = 0.0
 
 
 class WebAppCheckInResponse(BaseModel):
@@ -97,14 +100,12 @@ async def webapp_check_in(
     data: WebAppCheckInRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    # 1. Telegram initData tekshiruvi
     user_data = verify_telegram_webapp_data(data.init_data, settings.TELEGRAM_BOT_TOKEN)
     if user_data is None:
         raise HTTPException(status_code=403, detail="Telegram ma'lumotlari noto'g'ri")
 
     telegram_user_id = str(user_data.get("id"))
 
-    # 2. Xodimni topish
     employee = await db.scalar(
         select(Employee)
         .options(selectinload(Employee.branch), selectinload(Employee.user))
@@ -116,9 +117,6 @@ async def webapp_check_in(
     if not employee.is_active:
         raise HTTPException(status_code=403, detail="Sizning hisobingiz faol emas")
 
-    # 3. Yuz tanish tekshiruvi
-    # Frontend face-api.js score yuboradi (0.0 - 1.0)
-    # 0.6+ = mos deb qabul qilamiz
     FACE_THRESHOLD = 0.6
     if employee.face_photo and data.face_match_score < FACE_THRESHOLD:
         raise HTTPException(
@@ -127,7 +125,6 @@ async def webapp_check_in(
                    f"Ruxsat berilgan minimum: {FACE_THRESHOLD}"
         )
 
-    # 4. Rasmni saqlash
     photo_path: str | None = None
     try:
         media_dir = os.path.join(settings.MEDIA_DIR, "attendance")
@@ -143,9 +140,8 @@ async def webapp_check_in(
 
         photo_path = f"attendance/{filename}"
     except Exception:
-        pass  # Rasm saqlanmasa ham davom etamiz
+        pass
 
-    # 5. Check-in (geofence tekshiruvi attendance_service ichida)
     local_dt = datetime.now(tz=TZ)
     check_in_req = CheckInRequest(
         employee_id=employee.id,
@@ -162,7 +158,6 @@ async def webapp_check_in(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    # 6. Dam olish kuni bonusi ma'lumoti
     bonus_amount = None
     if record.status == "holiday":
         hourly = employee.get_effective_hourly_rate()
@@ -170,7 +165,6 @@ async def webapp_check_in(
         amount = (hourly * Decimal(employee.work_hours_per_day)).quantize(Decimal("0.01"))
         bonus_amount = f"{amount:,.0f} so'm"
 
-    # 7. Telegram xabar
     status_text = {
         "present": "✅ O'z vaqtida",
         "late": f"⏰ Kech keldi (+{record.late_minutes} daqiqa)",
@@ -188,7 +182,6 @@ async def webapp_check_in(
 
     await send_message(employee.user.phone if employee.user else telegram_user_id, msg)
 
-    # Masofani hisoblash (response uchun)
     distance = None
     if employee.branch and employee.branch.latitude:
         from app.services.attendance_service import haversine_meters
@@ -208,22 +201,13 @@ async def webapp_check_in(
     )
 
 
-# ─── Employee face photo — WebApp uchun olish ────────────────────────────────
-
-class FacePhotoRequest(BaseModel):
-    init_data: str
-    telegram_user_id: str
-
+# ─── Employee info — WebApp uchun ────────────────────────────────────────────
 
 @router.get("/webapp-employee-info")
 async def webapp_employee_info(
     init_data: str,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    WebApp initData orqali xodim ma'lumotlarini qaytaradi.
-    Face verification uchun face_photo URL ham keladi.
-    """
     user_data = verify_telegram_webapp_data(init_data, settings.TELEGRAM_BOT_TOKEN)
     if user_data is None:
         raise HTTPException(status_code=403, detail="Noto'g'ri initData")
@@ -231,13 +215,12 @@ async def webapp_employee_info(
     telegram_user_id = str(user_data.get("id"))
     employee = await db.scalar(
         select(Employee)
-        .options(selectinload(Employee.branch))
+        .options(selectinload(Employee.branch), selectinload(Employee.user))
         .where(Employee.telegram_user_id == telegram_user_id)
     )
     if not employee:
         raise HTTPException(status_code=404, detail="Xodim topilmadi")
 
-    # Bugungi holat
     from datetime import date
     today = datetime.now(tz=TZ).date()
     today_att = await attendance_service.get_by_employee_date(db, employee.id, today)
@@ -262,7 +245,7 @@ async def webapp_employee_info(
     }
 
 
-# ─── Bot webhook (old commands + /start WebApp) ───────────────────────────────
+# ─── Bot webhook ─────────────────────────────────────────────────────────────
 
 @router.post("/webhook")
 async def telegram_webhook(
@@ -288,9 +271,10 @@ async def telegram_webhook(
         .where(Employee.telegram_user_id == chat_id)
     )
 
-    # /start — WebApp tugmasi yuborish
+    # WebApp URL endi backend dan serve qilinadi
+    webapp_url = f"{settings.BASE_URL}/api/telegram/webapp/checkin"
+
     if text.startswith("/start"):
-        webapp_url = f"{settings.BASE_URL}/webapp/checkin.html"
         import httpx
         async with httpx.AsyncClient() as client:
             await client.post(
@@ -316,7 +300,6 @@ async def telegram_webhook(
         await send_message(chat_id, "❌ Siz tizimda ro'yxatdan o'tmagansiz.")
         return {"ok": True}
 
-    # UTC → UTC+5
     utc_dt = datetime.fromtimestamp(message.get("date", 0), tz=timezone.utc)
     local_dt = utc_dt.astimezone(TZ)
     today = local_dt.date()
@@ -333,7 +316,6 @@ async def telegram_webhook(
             f"🕐 Jami kechikish: {summary.total_late_minutes} daqiqa",
         )
     else:
-        webapp_url = f"{settings.BASE_URL}/webapp/checkin.html"
         import httpx
         async with httpx.AsyncClient() as client:
             await client.post(
