@@ -226,22 +226,22 @@ async def webapp_employee_info(
     today_att = await attendance_service.get_by_employee_date(db, employee.id, today)
 
     return {
-        "employee_id": employee.id,
-        "full_name": employee.user.full_name if employee.user else "",
+        "employee_id":    employee.id,
+        "full_name":      employee.user.full_name if employee.user else "",
         "face_photo_url": (
             f"{settings.BASE_URL}/media/{employee.face_photo}"
             if employee.face_photo else None
         ),
         "branch": {
-            "name": employee.branch.name if employee.branch else "",
-            "latitude": float(employee.branch.latitude) if employee.branch and employee.branch.latitude else None,
-            "longitude": float(employee.branch.longitude) if employee.branch and employee.branch.longitude else None,
-            "radius_meters": employee.branch.radius_meters if employee.branch else 200,
+            "name":            employee.branch.name if employee.branch else "",
+            "latitude":        float(employee.branch.latitude) if employee.branch and employee.branch.latitude else None,
+            "longitude":       float(employee.branch.longitude) if employee.branch and employee.branch.longitude else None,
+            "radius_meters":   employee.branch.radius_meters if employee.branch else 200,
             "work_start_time": str(employee.branch.work_start_time) if employee.branch else "09:00:00",
         },
-        "today_checked_in": bool(today_att and today_att.check_in_time),
+        "today_checked_in":  bool(today_att and today_att.check_in_time),
         "today_checked_out": bool(today_att and today_att.check_out_time),
-        "is_off_day": employee.is_off_day(today),
+        "is_off_day":        employee.is_off_day(today),
     }
 
 
@@ -271,10 +271,13 @@ async def telegram_webhook(
         .where(Employee.telegram_user_id == chat_id)
     )
 
-    # WebApp URL endi backend dan serve qilinadi
     webapp_url = f"{settings.BASE_URL}/api/telegram/webapp/checkin"
 
     if text.startswith("/start"):
+        if not employee:
+            await send_message(chat_id, "❌ Siz tizimda ro'yxatdan o'tmagansiz. HR bo'limiga murojaat qiling.")
+            return {"ok": True}
+
         import httpx
         async with httpx.AsyncClient() as client:
             await client.post(
@@ -292,8 +295,6 @@ async def telegram_webhook(
                 },
                 timeout=10,
             )
-        if not employee:
-            await send_message(chat_id, "❌ Siz tizimda ro'yxatdan o'tmagansiz. HR bo'limiga murojaat qiling.")
         return {"ok": True}
 
     if not employee:
