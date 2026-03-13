@@ -1,4 +1,6 @@
-from datetime import datetime, timezone
+from calendar import monthrange
+from datetime import date, datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
@@ -58,16 +60,10 @@ async def get_salary_record(db: AsyncSession, record_id: int) -> SalaryRecord | 
 async def create_salary_record(
     db: AsyncSession, data: SalaryRecordCreate, created_by_id: int
 ) -> SalaryRecord:
-    """
-    Xodimning base_salary va shu oyga tegishli
-    bonus/deduction larni yig'ib SalaryRecord yaratadi.
-    """
-
     employee = await db.get(Employee, data.employee_id)
     if not employee:
         raise ValueError("Employee not found")
 
-    # Duplicate tekshiruv
     existing = await db.scalar(
         select(SalaryRecord).where(
             SalaryRecord.employee_id == data.employee_id,
@@ -76,9 +72,8 @@ async def create_salary_record(
         )
     )
     if existing:
-        raise ValueError(f"Salary record already exists for this period")
+        raise ValueError("Salary record already exists for this period")
 
-    # Shu oyning bonus va deductionlarini yig'ish
     bonuses = (await db.execute(
         select(Bonus).where(
             Bonus.employee_id == data.employee_id,
@@ -97,12 +92,8 @@ async def create_salary_record(
 
     total_bonus = sum(b.amount for b in bonuses)
     total_deduction = sum(d.amount for d in deductions)
-    late_deduction = sum(
-        d.amount for d in deductions if d.deduction_type.value == "late"
-    )
-    leave_deduction = sum(
-        d.amount for d in deductions if d.deduction_type.value == "absence"
-    )
+    late_deduction = sum(d.amount for d in deductions if d.deduction_type.value == "late")
+    leave_deduction = sum(d.amount for d in deductions if d.deduction_type.value == "absence")
 
     record = SalaryRecord(
         employee_id=data.employee_id,
@@ -132,6 +123,139 @@ async def update_salary_status(
     await db.commit()
     await db.refresh(record)
     return record
+
+
+# ── Daily Earnings ────────────────────────────────────────────
+
+WEEKDAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+
+def _calc_hourly_rate(employee: Employee, year: int, month: int) -> Decimal:
+    """
+    1) employee.hourly_rate mavjud → shu
+    2) yo'q → base_salary / (ish_kunlari_soni * work_hours_per_day)
+    """
+    if employee.hourly_rate:
+        return employee.hourly_rate
+
+    _, days_in_month = monthrange(year, month)
+    off_days: list[str] = employee.off_days or []
+
+    working_days = sum(
+        1 for d in range(1, days_in_month + 1)
+        if WEEKDAY_NAMES[date(year, month, d).weekday()] not in off_days
+    )
+    if working_days == 0:
+        working_days = 22
+
+    hours_per_month = working_days * (employee.work_hours_per_day or 8)
+    return employee.base_salary / Decimal(hours_per_month)
+
+
+async def get_daily_earnings(
+    db: AsyncSession,
+    employee_id: int,
+    year: int,
+    month: int,
+) -> dict:
+    """
+    Xodimning shu oyda har kunlik ishlagan soati va daromadini qaytaradi.
+    - check_in + check_out → soat * stavka
+    - check_in bor, check_out yo'q, bugun → hozirgi vaqtgacha
+    - check_in bor, check_out yo'q, o'tgan kun → 0 (no_checkout)
+    - attendance yo'q → 0 (absent)
+    - dam olish kuni → off
+    """
+    from app.models.attendance import Attendance
+
+    employee = await db.get(Employee, employee_id)
+    if not employee:
+        raise ValueError("Employee not found")
+
+    hourly_rate = _calc_hourly_rate(employee, year, month)
+    off_days: list[str] = employee.off_days or []
+
+    attendances = (await db.execute(
+        select(Attendance).where(
+            Attendance.employee_id == employee_id,
+            func.extract("year", Attendance.date) == year,
+            func.extract("month", Attendance.date) == month,
+        ).order_by(Attendance.date)
+    )).scalars().all()
+
+    att_by_date = {a.date: a for a in attendances}
+
+    _, days_in_month = monthrange(year, month)
+    today = date.today()
+
+    days = []
+    total_hours = Decimal("0")
+    total_earned = Decimal("0")
+    today_hours = Decimal("0")
+    today_earned = Decimal("0")
+
+    for day_num in range(1, days_in_month + 1):
+        d = date(year, month, day_num)
+        if d > today:
+            break
+
+        day_name = WEEKDAY_NAMES[d.weekday()]
+        is_off = day_name in off_days
+        att = att_by_date.get(d)
+        worked_hours = Decimal("0")
+        earned = Decimal("0")
+
+        if is_off:
+            status = "off"
+        elif att and att.check_in_time and att.check_out_time:
+            ci = datetime.combine(d, att.check_in_time)
+            co = datetime.combine(d, att.check_out_time)
+            secs = (co - ci).total_seconds()
+            if secs > 0:
+                worked_hours = Decimal(str(round(secs / 3600, 2)))
+                earned = (worked_hours * hourly_rate).quantize(Decimal("1"))
+            status = "present"
+        elif att and att.check_in_time and not att.check_out_time:
+            if d == today:
+                ci = datetime.combine(d, att.check_in_time)
+                secs = (datetime.now() - ci).total_seconds()
+                if secs > 0:
+                    worked_hours = Decimal(str(round(secs / 3600, 2)))
+                    earned = (worked_hours * hourly_rate).quantize(Decimal("1"))
+                status = "active"
+            else:
+                status = "no_checkout"
+        else:
+            status = "absent"
+
+        days.append({
+            "date": d.isoformat(),
+            "day": day_num,
+            "weekday": day_name,
+            "is_off": is_off,
+            "status": status,
+            "worked_hours": float(worked_hours),
+            "earned": int(earned),
+        })
+
+        total_hours += worked_hours
+        total_earned += earned
+        if d == today:
+            today_hours = worked_hours
+            today_earned = earned
+
+    return {
+        "employee_id": employee_id,
+        "year": year,
+        "month": month,
+        "hourly_rate": int(hourly_rate),
+        "base_salary": int(employee.base_salary),
+        "today_hours": float(today_hours),
+        "today_earned": int(today_earned),
+        "total_hours": float(total_hours),
+        "total_earned": int(total_earned),
+        "days": days,
+    }
 
 
 # ── Bonus ────────────────────────────────────────────────────
