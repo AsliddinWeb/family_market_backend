@@ -77,6 +77,13 @@ async def create_salary_record(
     if not employee:
         raise ValueError("Employee not found")
 
+    # Barcha kerakli fieldlarni oldindan o'qib olamiz (lazy load triggerlanmasin)
+    emp_base_salary       = employee.base_salary
+    emp_hourly_rate       = employee.hourly_rate
+    emp_work_hours        = employee.work_hours_per_day or 8
+    emp_off_days: list[str] = employee.off_days or []
+        raise ValueError("Employee not found")
+
     existing = await db.scalar(
         select(SalaryRecord).where(
             SalaryRecord.employee_id == data.employee_id,
@@ -91,8 +98,10 @@ async def create_salary_record(
     month = data.period_month
 
     # ── 1. Kunlik stavka ─────────────────────────────────────────────────
-    hourly_rate = _calc_hourly_rate(employee, year, month)
-    daily_wage  = (hourly_rate * Decimal(employee.work_hours_per_day or 8)).quantize(Decimal("1"))
+    hourly_rate = _calc_hourly_rate(
+        emp_base_salary, emp_hourly_rate, emp_work_hours, emp_off_days, year, month
+    )
+    daily_wage = (hourly_rate * Decimal(emp_work_hours)).quantize(Decimal("1"))
 
     # ── 2. Unpaid leave → leave_deduction ────────────────────────────────
     _, days_in_month = monthrange(year, month)
@@ -204,7 +213,7 @@ async def create_salary_record(
         employee_id     = data.employee_id,
         period_year     = year,
         period_month    = month,
-        base_salary     = employee.base_salary,
+        base_salary     = emp_base_salary,
         total_bonus     = total_bonus,
         total_deduction = total_deduction,
         late_deduction  = late_deduction,
@@ -239,16 +248,22 @@ async def update_salary_status(
 WEEKDAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
 
-def _calc_hourly_rate(employee: Employee, year: int, month: int) -> Decimal:
+def _calc_hourly_rate(
+    base_salary: Decimal,
+    hourly_rate: Decimal | None,
+    work_hours_per_day: int,
+    off_days: list[str],
+    year: int,
+    month: int,
+) -> Decimal:
     """
-    1) employee.hourly_rate mavjud → shu
+    1) hourly_rate mavjud → shu
     2) yo'q → base_salary / (ish_kunlari_soni * work_hours_per_day)
     """
-    if employee.hourly_rate:
-        return employee.hourly_rate
+    if hourly_rate:
+        return hourly_rate
 
     _, days_in_month = monthrange(year, month)
-    off_days: list[str] = employee.off_days or []
 
     working_days = sum(
         1 for d in range(1, days_in_month + 1)
@@ -257,8 +272,8 @@ def _calc_hourly_rate(employee: Employee, year: int, month: int) -> Decimal:
     if working_days == 0:
         working_days = 22
 
-    hours_per_month = working_days * (employee.work_hours_per_day or 8)
-    return employee.base_salary / Decimal(hours_per_month)
+    hours_per_month = working_days * work_hours_per_day
+    return base_salary / Decimal(hours_per_month)
 
 
 async def get_daily_earnings(
@@ -283,8 +298,16 @@ async def get_daily_earnings(
     if not employee:
         raise ValueError("Employee not found")
 
-    hourly_rate = _calc_hourly_rate(employee, year, month)
-    off_days: list[str] = employee.off_days or []
+    # Fieldlarni oldindan o'qib olamiz
+    emp_base_salary    = employee.base_salary
+    emp_hourly_rate    = employee.hourly_rate
+    emp_work_hours     = employee.work_hours_per_day or 8
+    emp_off_days: list[str] = employee.off_days or []
+
+    hourly_rate = _calc_hourly_rate(
+        emp_base_salary, emp_hourly_rate, emp_work_hours, emp_off_days, year, month
+    )
+    off_days = emp_off_days
 
     attendances = (await db.execute(
         select(Attendance).where(
@@ -360,7 +383,7 @@ async def get_daily_earnings(
         "year": year,
         "month": month,
         "hourly_rate": int(hourly_rate),
-        "base_salary": int(employee.base_salary),
+        "base_salary": int(emp_base_salary),
         "today_hours": float(today_hours),
         "today_earned": int(today_earned),
         "total_hours": float(total_hours),
