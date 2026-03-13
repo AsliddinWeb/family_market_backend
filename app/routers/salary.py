@@ -46,7 +46,9 @@ async def create_salary_record(
 ):
     try:
         record = await salary_service.create_salary_record(db, data, current_user.id)
-        return SalaryRecordOut.from_orm_with_net(record)
+        # commit dan keyin employee+user bilan qayta yuklaymiz (MissingGreenlet fix)
+        loaded = await salary_service.get_salary_record(db, record.id)
+        return SalaryRecordOut.from_orm_with_net(loaded)
     except ValueError as e:
         msg = str(e)
         status_code = 409 if "already exists" in msg else 400
