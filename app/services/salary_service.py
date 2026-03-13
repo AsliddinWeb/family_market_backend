@@ -30,7 +30,7 @@ async def get_salary_records(
     q = (
         select(SalaryRecord)
         .join(Employee, SalaryRecord.employee_id == Employee.id)
-        .options(selectinload(SalaryRecord.employee))
+        .options(selectinload(SalaryRecord.employee).selectinload(Employee.user))
     )
 
     if employee_id:

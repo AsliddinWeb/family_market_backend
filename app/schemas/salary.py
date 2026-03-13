@@ -38,9 +38,10 @@ class SalaryRecordOut(BaseModel):
         net = obj.base_salary + obj.total_bonus - obj.total_deduction
         emp = None
         if obj.employee:
+            user = getattr(obj.employee, "user", None)
             emp = EmployeeShortForSalary(
                 id=obj.employee.id,
-                full_name=obj.employee.full_name,
+                full_name=user.full_name if user else f"#{obj.employee_id}",
                 position=getattr(obj.employee, "position", None),
                 branch_id=obj.employee.branch_id,
             )
