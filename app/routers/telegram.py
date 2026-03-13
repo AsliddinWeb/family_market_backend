@@ -150,6 +150,7 @@ class WebAppCheckInRequest(BaseModel):
     latitude: float
     longitude: float
     face_match_score: float = 0.0
+    force: bool = False   # True → geofence tekshiruvi o'tkazib yuboriladi
 
 
 class WebAppCheckInResponse(BaseModel):
@@ -191,7 +192,7 @@ async def webapp_check_in(
     )
 
     try:
-        record = await attendance_service.check_in(db, check_in_req)
+        record = await attendance_service.check_in(db, check_in_req, skip_geo_check=data.force)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 

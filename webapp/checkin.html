@@ -386,6 +386,7 @@ const state = {
   detectionInterval: null,
   alreadyDone:       false,   // bugun allaqachon qayd etilganmi
   existingTime:      null,    // mavjud vaqt (ogohlantirish uchun)
+  force:             false,   // True → geofence bypass + qayta yozish
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -768,24 +769,23 @@ function showInlineError(msg) {
 // ═══════════════════════════════════════════════════════════════════════════
 function onSubmitClick() {
   // Bugun allaqachon qayd etilganmi?
-  if (state.alreadyDone && state.existingTime) {
-    const timeStr   = formatTime(state.existingTime);
-    const now       = new Date();
-    const newTime   = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-    const actionLabel = MODE === 'checkin' ? 'kelish vaqti' : 'ketish vaqti';
+  if (state.alreadyDone && state.existingTime && !state.force) {
+    const timeStr     = formatTime(state.existingTime);
+    const now         = new Date();
+    const newTime     = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    const actionLabel = MODE === 'checkin' ? 'Kelish vaqti' : 'Ketish vaqti';
 
-    document.getElementById('confirm-title').textContent = 'Qayta qayd etish';
-    document.getElementById('confirm-msg').textContent   =
-      `Siz bugun ${actionLabel}ni allaqachon qayd etgansiz:\n` +
-      `📌 Mavjud: ${timeStr}\n` +
-      `🔄 Yangi: ${newTime}\n\n` +
-      `Yangilasangiz, ${actionLabel}ingiz ${newTime} bo'lib qoladi. Davom etasizmi?`;
+    document.getElementById('confirm-title').textContent = '⚠️ Qayta qayd etish';
+    document.getElementById('confirm-msg').innerHTML =
+      `Siz bugun allaqachon qayd etgansiz:<br><br>` +
+      `📌 Mavjud <b>${actionLabel}</b>: <b>${timeStr}</b><br>` +
+      `🔄 Yangi vaqt: <b>${newTime}</b><br><br>` +
+      `Yangilasangiz, ${actionLabel.toLowerCase()}ngiz <b>${newTime}</b> bo'lib qoladi.`;
 
     document.getElementById('confirm-modal').style.display = 'flex';
     return;
   }
 
-  // Birinchi marta — to'g'ridan-to'g'ri yuborish
   doSubmit();
 }
 
@@ -795,6 +795,7 @@ function closeConfirmModal() {
 
 function confirmSubmit() {
   closeConfirmModal();
+  state.force = true;
   doSubmit();
 }
 
@@ -815,6 +816,7 @@ async function doSubmit() {
     photo_base64: state.photoBase64,
     latitude:     state.location?.latitude  || 0,
     longitude:    state.location?.longitude || 0,
+    force:        state.force,
   };
 
   // Checkin uchun face_match_score ham kerak
@@ -833,7 +835,21 @@ async function doSubmit() {
     if (!res.ok) {
       btn.disabled = false;
       btn.innerHTML = CFG.btnText;
-      showInlineError(data.detail || 'Xato yuz berdi');
+
+      // Geofence xatosi → force confirm modal
+      const detail = data.detail || '';
+      if (!state.force && (detail.includes('uzoqdasiz') || detail.includes('radius'))) {
+        const dist = state.distanceMeters ? `${Math.round(state.distanceMeters)} m` : '';
+        const actionLabel = MODE === 'checkin' ? 'Kelish' : 'Ketish';
+        document.getElementById('confirm-title').textContent = '📍 Ofisdan uzoqdasiz';
+        document.getElementById('confirm-msg').innerHTML =
+          `${dist ? `Siz ofisdan <b>${dist}</b> uzoqdasiz.<br><br>` : ''}` +
+          `${actionLabel}ni shunga qaramay qayd etasizmi?`;
+        document.getElementById('confirm-modal').style.display = 'flex';
+        return;
+      }
+
+      showInlineError(detail || 'Xato yuz berdi');
       return;
     }
 
