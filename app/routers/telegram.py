@@ -20,6 +20,7 @@ from app.models.employee import Employee
 from app.models.user import User
 from app.schemas.attendance import CheckInRequest, CheckOutRequest
 from app.services import attendance_service
+from app.services.attendance_service import haversine_meters
 from app.services.telegram_service import delete_webhook, send_message, set_webhook
 
 router = APIRouter(prefix="/api/telegram", tags=["Telegram"])
@@ -48,7 +49,7 @@ async def remove_webhook(_: User = Depends(get_admin)):
     return await delete_webhook()
 
 
-# ─── WebApp auth yordamchi ────────────────────────────────────────────────────
+# ─── Telegram WebApp initData tekshiruvi ─────────────────────────────────────
 
 def verify_telegram_webapp_data(init_data: str, bot_token: str) -> dict | None:
     try:
@@ -71,6 +72,72 @@ def verify_telegram_webapp_data(init_data: str, bot_token: str) -> dict | None:
         if user_data:
             return json.loads(user_data)
         return {}
+    except Exception:
+        return None
+
+
+# ─── Yordamchi: xodimni telegram_user_id orqali olish ───────────────────────
+
+async def _get_employee_by_init_data(init_data: str, db: AsyncSession) -> Employee:
+    """initData ni verify qilib, xodimni qaytaradi. Xato bo'lsa HTTPException."""
+    user_data = verify_telegram_webapp_data(init_data, settings.TELEGRAM_BOT_TOKEN)
+    if user_data is None:
+        raise HTTPException(status_code=403, detail="Telegram ma'lumotlari noto'g'ri")
+
+    telegram_user_id = str(user_data.get("id"))
+
+    employee = await db.scalar(
+        select(Employee)
+        .options(selectinload(Employee.branch), selectinload(Employee.user))
+        .where(Employee.telegram_user_id == telegram_user_id)
+    )
+    if not employee:
+        raise HTTPException(status_code=404, detail="Siz tizimda ro'yxatdan o'tmagansiz")
+    if not employee.is_active:
+        raise HTTPException(status_code=403, detail="Sizning hisobingiz faol emas")
+
+    return employee
+
+
+# ─── Yordamchi: masofa hisoblash ─────────────────────────────────────────────
+
+def _calc_distance(employee: Employee, lat: float, lon: float) -> float | None:
+    """Branch ga nisbatan masofani metrda qaytaradi. Branch yo'q bo'lsa None."""
+    if (
+        employee.branch
+        and employee.branch.latitude is not None
+        and employee.branch.longitude is not None
+    ):
+        return round(
+            haversine_meters(
+                float(employee.branch.latitude),
+                float(employee.branch.longitude),
+                lat,
+                lon,
+            ),
+            1,
+        )
+    return None
+
+
+# ─── Yordamchi: rasm saqlash ─────────────────────────────────────────────────
+
+def _save_photo(employee_id: int, photo_base64: str, prefix: str = "") -> str | None:
+    """Base64 rasmni diskka saqlaydi, yo'lini qaytaradi."""
+    try:
+        media_dir = os.path.join(settings.MEDIA_DIR, "attendance")
+        os.makedirs(media_dir, exist_ok=True)
+
+        now = datetime.now(tz=TZ)
+        tag = f"_{prefix}" if prefix else ""
+        filename = f"{employee_id}{tag}_{now.strftime('%Y%m%d_%H%M%S')}.jpg"
+        file_path = os.path.join(media_dir, filename)
+
+        img_data = base64.b64decode(photo_base64)
+        with open(file_path, "wb") as f:
+            f.write(img_data)
+
+        return f"attendance/{filename}"
     except Exception:
         return None
 
@@ -100,57 +167,27 @@ async def webapp_check_in(
     data: WebAppCheckInRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    user_data = verify_telegram_webapp_data(data.init_data, settings.TELEGRAM_BOT_TOKEN)
-    if user_data is None:
-        raise HTTPException(status_code=403, detail="Telegram ma'lumotlari noto'g'ri")
+    employee = await _get_employee_by_init_data(data.init_data, db)
 
-    telegram_user_id = str(user_data.get("id"))
-
-    employee = await db.scalar(
-        select(Employee)
-        .options(selectinload(Employee.branch), selectinload(Employee.user))
-        .where(Employee.telegram_user_id == telegram_user_id)
-    )
-    if not employee:
-        raise HTTPException(status_code=404, detail="Siz tizimda ro'yxatdan o'tmagansiz")
-
-    if not employee.is_active:
-        raise HTTPException(status_code=403, detail="Sizning hisobingiz faol emas")
-
+    # Yuz tanish tekshiruvi
     FACE_THRESHOLD = 0.6
     if employee.face_photo and data.face_match_score < FACE_THRESHOLD:
         raise HTTPException(
             status_code=422,
-            detail=f"Yuz tanishda mos kelmadi (score: {data.face_match_score:.2f}). "
-                   f"Ruxsat berilgan minimum: {FACE_THRESHOLD}"
+            detail=(
+                f"Yuz tanishda mos kelmadi (score: {data.face_match_score:.2f}). "
+                f"Ruxsat berilgan minimum: {FACE_THRESHOLD}"
+            ),
         )
 
-    photo_path: str | None = None
-    try:
-        media_dir = os.path.join(settings.MEDIA_DIR, "attendance")
-        os.makedirs(media_dir, exist_ok=True)
-
-        utc_now = datetime.now(tz=TZ)
-        filename = f"{employee.id}_{utc_now.strftime('%Y%m%d_%H%M%S')}.jpg"
-        file_path = os.path.join(media_dir, filename)
-
-        img_data = base64.b64decode(data.photo_base64)
-        with open(file_path, "wb") as f:
-            f.write(img_data)
-
-        photo_path = f"attendance/{filename}"
-    except Exception:
-        pass
-
+    photo_path = _save_photo(employee.id, data.photo_base64, prefix="in")
     local_dt = datetime.now(tz=TZ)
+
     check_in_req = CheckInRequest(
         employee_id=employee.id,
         check_in_time=local_dt.time(),
         check_in_photo=photo_path,
-        check_in_location={
-            "latitude": data.latitude,
-            "longitude": data.longitude,
-        },
+        check_in_location={"latitude": data.latitude, "longitude": data.longitude},
     )
 
     try:
@@ -160,35 +197,37 @@ async def webapp_check_in(
 
     bonus_amount = None
     if record.status == "holiday":
-        hourly = employee.get_effective_hourly_rate()
         from decimal import Decimal
+        hourly = employee.get_effective_hourly_rate()
         amount = (hourly * Decimal(employee.work_hours_per_day)).quantize(Decimal("0.01"))
         bonus_amount = f"{amount:,.0f} so'm"
 
     status_text = {
         "present": "✅ O'z vaqtida",
-        "late": f"⏰ Kech keldi (+{record.late_minutes} daqiqa)",
+        "late":    f"⏰ Kech keldi (+{record.late_minutes} daqiqa)",
         "holiday": "🎉 Dam olish kuni",
     }.get(record.status, "✅ Qayd etildi")
 
+    distance = _calc_distance(employee, data.latitude, data.longitude)
+    distance_text = ""
+    if distance is not None:
+        radius = employee.branch.radius_meters if employee.branch else 200
+        if distance <= radius:
+            distance_text = "\n📍 Ofis qamrovida"
+        else:
+            distance_text = f"\n📍 Ofisdan {distance:.0f} m uzoqda"
+
     msg = (
-        f"📍 *Kelish qayd etildi!*\n"
+        f"📥 *Kelish qayd etildi!*\n"
         f"📅 {local_dt.strftime('%d.%m.%Y')}\n"
         f"🕐 {record.check_in_time}\n"
         f"{status_text}"
+        f"{distance_text}"
     )
     if bonus_amount:
         msg += f"\n💰 Bonus: {bonus_amount}"
 
-    await send_message(employee.user.phone if employee.user else telegram_user_id, msg)
-
-    distance = None
-    if employee.branch and employee.branch.latitude:
-        from app.services.attendance_service import haversine_meters
-        distance = haversine_meters(
-            float(employee.branch.latitude), float(employee.branch.longitude),
-            data.latitude, data.longitude,
-        )
+    await send_message(employee.user.phone if employee.user else employee.telegram_user_id, msg)
 
     return WebAppCheckInResponse(
         ok=True,
@@ -197,11 +236,84 @@ async def webapp_check_in(
         late_minutes=record.late_minutes,
         is_holiday=(record.status == "holiday"),
         bonus_amount=bonus_amount,
-        distance_meters=round(distance, 1) if distance else None,
+        distance_meters=distance,
     )
 
 
-# ─── Employee info — WebApp uchun ────────────────────────────────────────────
+# ─── WebApp Check-out ─────────────────────────────────────────────────────────
+
+class WebAppCheckOutRequest(BaseModel):
+    init_data: str
+    photo_base64: str
+    latitude: float
+    longitude: float
+
+
+class WebAppCheckOutResponse(BaseModel):
+    ok: bool
+    message: str
+    check_out_time: str | None = None
+    distance_meters: float | None = None
+
+
+@router.post("/webapp-checkout", response_model=WebAppCheckOutResponse)
+async def webapp_check_out(
+    data: WebAppCheckOutRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    employee = await _get_employee_by_init_data(data.init_data, db)
+
+    # Bugun check-in qilganmi tekshirish
+    local_dt = datetime.now(tz=TZ)
+    today = local_dt.date()
+    today_att = await attendance_service.get_by_employee_date(db, employee.id, today)
+
+    if not today_att or not today_att.check_in_time:
+        raise HTTPException(
+            status_code=422,
+            detail="Avval kelishni qayd etmagan xodim ketishni qayd eta olmaydi",
+        )
+
+    photo_path = _save_photo(employee.id, data.photo_base64, prefix="out")
+
+    check_out_req = CheckOutRequest(
+        employee_id=employee.id,
+        check_out_time=local_dt.time(),
+        check_out_photo=photo_path,
+        check_out_location={"latitude": data.latitude, "longitude": data.longitude},
+    )
+
+    try:
+        record = await attendance_service.check_out(db, check_out_req)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    distance = _calc_distance(employee, data.latitude, data.longitude)
+    distance_text = ""
+    if distance is not None:
+        radius = employee.branch.radius_meters if employee.branch else 200
+        if distance <= radius:
+            distance_text = "\n📍 Ofis qamrovida"
+        else:
+            distance_text = f"\n📍 Ofisdan {distance:.0f} m uzoqda"
+
+    msg = (
+        f"📤 *Ketish qayd etildi!*\n"
+        f"📅 {local_dt.strftime('%d.%m.%Y')}\n"
+        f"🕐 {record.check_out_time}"
+        f"{distance_text}"
+    )
+    await send_message(employee.user.phone if employee.user else employee.telegram_user_id, msg)
+
+    return WebAppCheckOutResponse(
+        ok=True,
+        message="Ketish muvaffaqiyatli qayd etildi",
+        check_out_time=str(record.check_out_time),
+        distance_meters=distance,
+    )
+
+
+# ─── Employee info — WebApp uchun ─────────────────────────────────────────────
 
 @router.get("/webapp-employee-info")
 async def webapp_employee_info(
@@ -221,7 +333,6 @@ async def webapp_employee_info(
     if not employee:
         raise HTTPException(status_code=404, detail="Xodim topilmadi")
 
-    from datetime import date
     today = datetime.now(tz=TZ).date()
     today_att = await attendance_service.get_by_employee_date(db, employee.id, today)
 
@@ -241,11 +352,44 @@ async def webapp_employee_info(
         },
         "today_checked_in":  bool(today_att and today_att.check_in_time),
         "today_checked_out": bool(today_att and today_att.check_out_time),
+        "today_check_in_time": str(today_att.check_in_time) if today_att and today_att.check_in_time else None,
+        "today_check_out_time": str(today_att.check_out_time) if today_att and today_att.check_out_time else None,
         "is_off_day":        employee.is_off_day(today),
     }
 
 
-# ─── Bot webhook ─────────────────────────────────────────────────────────────
+# ─── Bot webhook ──────────────────────────────────────────────────────────────
+
+async def _send_main_menu(chat_id: str, webapp_url: str) -> None:
+    """Foydalanuvchiga 2 ta tugmali asosiy menyuni yuboradi."""
+    import httpx
+    async with httpx.AsyncClient() as client:
+        await client.post(
+            f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={
+                "chat_id": chat_id,
+                "text": "📋 *FamilyMarket HR*\nQuyidagi tugmalardan birini tanlang:",
+                "parse_mode": "Markdown",
+                "reply_markup": {
+                    "inline_keyboard": [
+                        [
+                            {
+                                "text": "📥 Kelishni qayd etish",
+                                "web_app": {"url": f"{webapp_url}?mode=checkin"},
+                            }
+                        ],
+                        [
+                            {
+                                "text": "📤 Ketishni qayd etish",
+                                "web_app": {"url": f"{webapp_url}?mode=checkout"},
+                            }
+                        ],
+                    ]
+                },
+            },
+            timeout=10,
+        )
+
 
 @router.post("/webhook")
 async def telegram_webhook(
@@ -273,34 +417,21 @@ async def telegram_webhook(
 
     webapp_url = f"{settings.BASE_URL}/api/telegram/webapp/checkin"
 
+    # ── /start ────────────────────────────────────────────────────────────────
     if text.startswith("/start"):
         if not employee:
             await send_message(chat_id, "❌ Siz tizimda ro'yxatdan o'tmagansiz. HR bo'limiga murojaat qiling.")
             return {"ok": True}
 
-        import httpx
-        async with httpx.AsyncClient() as client:
-            await client.post(
-                f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage",
-                json={
-                    "chat_id": chat_id,
-                    "text": "📍 *Davomat belgilash*\nQuyidagi tugmani bosib kelishingizni qayd eting:",
-                    "parse_mode": "Markdown",
-                    "reply_markup": {
-                        "inline_keyboard": [[{
-                            "text": "✅ Davomat belgilash",
-                            "web_app": {"url": webapp_url},
-                        }]]
-                    },
-                },
-                timeout=10,
-            )
+        await _send_main_menu(chat_id, webapp_url)
         return {"ok": True}
 
+    # ── Ro'yxatdan o'tmagan ───────────────────────────────────────────────────
     if not employee:
         await send_message(chat_id, "❌ Siz tizimda ro'yxatdan o'tmagansiz.")
         return {"ok": True}
 
+    # ── /status ───────────────────────────────────────────────────────────────
     utc_dt = datetime.fromtimestamp(message.get("date", 0), tz=timezone.utc)
     local_dt = utc_dt.astimezone(TZ)
     today = local_dt.date()
@@ -317,22 +448,6 @@ async def telegram_webhook(
             f"🕐 Jami kechikish: {summary.total_late_minutes} daqiqa",
         )
     else:
-        import httpx
-        async with httpx.AsyncClient() as client:
-            await client.post(
-                f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage",
-                json={
-                    "chat_id": chat_id,
-                    "text": "📋 *Buyruqlar:*\n📊 /status — Oylik statistika\n\nDavomat belgilash uchun:",
-                    "parse_mode": "Markdown",
-                    "reply_markup": {
-                        "inline_keyboard": [[{
-                            "text": "✅ Davomat belgilash",
-                            "web_app": {"url": webapp_url},
-                        }]]
-                    },
-                },
-                timeout=10,
-            )
+        await _send_main_menu(chat_id, webapp_url)
 
     return {"ok": True}
