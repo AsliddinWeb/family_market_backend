@@ -71,7 +71,9 @@ async def create_salary_record(
     from app.models.attendance import Attendance
     from app.models.leave import Leave, LeaveStatus, LeaveType
 
-    employee = await db.get(Employee, data.employee_id)
+    employee = await db.scalar(
+        select(Employee).where(Employee.id == data.employee_id)
+    )
     if not employee:
         raise ValueError("Employee not found")
 
@@ -275,7 +277,9 @@ async def get_daily_earnings(
     """
     from app.models.attendance import Attendance
 
-    employee = await db.get(Employee, employee_id)
+    employee = await db.scalar(
+        select(Employee).where(Employee.id == employee_id)
+    )
     if not employee:
         raise ValueError("Employee not found")
 
