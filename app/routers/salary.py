@@ -122,5 +122,7 @@ async def update_salary_status(
     record = await salary_service.get_salary_record(db, record_id)
     if not record:
         raise HTTPException(status_code=404, detail="Salary record not found")
-    updated = await salary_service.update_salary_status(db, record, data)
+    await salary_service.update_salary_status(db, record, data)
+    # Commit dan keyin employee+user bilan qayta yuklaymiz
+    updated = await salary_service.get_salary_record(db, record_id)
     return SalaryRecordOut.from_orm_with_net(updated)

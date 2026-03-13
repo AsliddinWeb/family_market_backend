@@ -56,7 +56,13 @@ async def get_salary_records(
 
 
 async def get_salary_record(db: AsyncSession, record_id: int) -> SalaryRecord | None:
-    return await db.scalar(select(SalaryRecord).where(SalaryRecord.id == record_id))
+    return await db.scalar(
+        select(SalaryRecord)
+        .where(SalaryRecord.id == record_id)
+        .options(selectinload(SalaryRecord.employee).selectinload(Employee.user))
+    )
+
+
 
 
 async def create_salary_record(
@@ -210,15 +216,13 @@ def formatMoney_py(amount: Decimal) -> str:
 
 async def update_salary_status(
     db: AsyncSession, record: SalaryRecord, data: SalaryStatusUpdate
-) -> SalaryRecord:
+) -> None:
     record.status = data.status
     if data.notes:
         record.notes = data.notes
     if data.status == SalaryStatus.paid:
         record.paid_at = datetime.now(timezone.utc)
     await db.commit()
-    await db.refresh(record)
-    return record
 
 
 # ── Daily Earnings ────────────────────────────────────────────
