@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -76,3 +77,31 @@ async def update_salary_status(
         raise HTTPException(status_code=404, detail="Salary record not found")
     updated = await salary_service.update_salary_status(db, record, data)
     return SalaryRecordOut.from_orm_with_net(updated)
+
+class BatchStatusUpdate(BaseModel):
+    ids: list[int]
+    status: SalaryStatus
+
+
+@router.post("/batch-status", response_model=dict)
+async def batch_update_salary_status(
+    data: BatchStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_admin),
+):
+    """Bir nechta oylikni bir vaqtda tasdiqlash yoki to'lash."""
+    ok, fail = 0, 0
+    for record_id in data.ids:
+        record = await salary_service.get_salary_record(db, record_id)
+        if not record:
+            fail += 1
+            continue
+        try:
+            from app.schemas.salary import SalaryStatusUpdate
+            await salary_service.update_salary_status(
+                db, record, SalaryStatusUpdate(status=data.status)
+            )
+            ok += 1
+        except Exception:
+            fail += 1
+    return {"ok": ok, "fail": fail}

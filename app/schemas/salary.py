@@ -6,9 +6,19 @@ from pydantic import BaseModel, field_validator
 from app.models.salary import BonusType, DeductionType, SalaryStatus
 
 
+class EmployeeShortForSalary(BaseModel):
+    id: int
+    full_name: str
+    position: str | None = None
+    branch_id: int | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class SalaryRecordOut(BaseModel):
     id: int
     employee_id: int
+    employee: EmployeeShortForSalary | None = None
     period_year: int
     period_month: int
     base_salary: Decimal
@@ -26,9 +36,18 @@ class SalaryRecordOut(BaseModel):
     @classmethod
     def from_orm_with_net(cls, obj) -> "SalaryRecordOut":
         net = obj.base_salary + obj.total_bonus - obj.total_deduction
+        emp = None
+        if obj.employee:
+            emp = EmployeeShortForSalary(
+                id=obj.employee.id,
+                full_name=obj.employee.full_name,
+                position=getattr(obj.employee, "position", None),
+                branch_id=obj.employee.branch_id,
+            )
         return cls(
             id=obj.id,
             employee_id=obj.employee_id,
+            employee=emp,
             period_year=obj.period_year,
             period_month=obj.period_month,
             base_salary=obj.base_salary,

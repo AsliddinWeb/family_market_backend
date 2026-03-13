@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.salary import Bonus, Deduction, SalaryRecord, SalaryStatus
@@ -26,7 +27,11 @@ async def get_salary_records(
 ) -> tuple[int, list[SalaryRecord]]:
     from app.models.employee import Employee
 
-    q = select(SalaryRecord).join(Employee, SalaryRecord.employee_id == Employee.id)
+    q = (
+        select(SalaryRecord)
+        .join(Employee, SalaryRecord.employee_id == Employee.id)
+        .options(selectinload(SalaryRecord.employee))
+    )
 
     if employee_id:
         q = q.where(SalaryRecord.employee_id == employee_id)
