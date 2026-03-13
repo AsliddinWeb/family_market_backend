@@ -15,6 +15,8 @@ from app.schemas.salary import (
     SalaryStatusUpdate,
 )
 
+WEEKDAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
 
 # ── SalaryRecord ─────────────────────────────────────────────
 
@@ -60,29 +62,17 @@ async def get_salary_record(db: AsyncSession, record_id: int) -> SalaryRecord | 
 async def create_salary_record(
     db: AsyncSession, data: SalaryRecordCreate, created_by_id: int
 ) -> SalaryRecord:
-    """
-    Oylik yaratish — to'liq integratsiya:
-    1. Unpaid leave → kunlik stavka × kun soni → leave_deduction
-    2. No-checkout kunlar (check_in bor, check_out yo'q, o'tgan kun) → leave_deduction
-    3. Late deductions (Deduction jadvalidan)
-    4. Bonuses
-    Barcha auto-generated deductionlar avval o'chiriladi (qayta yaratishda)
-    """
     from app.models.attendance import Attendance
     from app.models.leave import Leave, LeaveStatus, LeaveType
 
-    employee = await db.scalar(
-        select(Employee).where(Employee.id == data.employee_id)
-    )
+    employee = await db.scalar(select(Employee).where(Employee.id == data.employee_id))
     if not employee:
         raise ValueError("Employee not found")
 
-    # Barcha kerakli fieldlarni oldindan o'qib olamiz (lazy load triggerlanmasin)
-    emp_base_salary       = employee.base_salary
-    emp_hourly_rate       = employee.hourly_rate
-    emp_work_hours        = employee.work_hours_per_day or 8
+    emp_base_salary = employee.base_salary
+    emp_hourly_rate = employee.hourly_rate
+    emp_work_hours = employee.work_hours_per_day or 8
     emp_off_days: list[str] = employee.off_days or []
-        raise ValueError("Employee not found")
 
     existing = await db.scalar(
         select(SalaryRecord).where(
@@ -94,47 +84,43 @@ async def create_salary_record(
     if existing:
         raise ValueError("Salary record already exists for this period")
 
-    year  = data.period_year
+    year = data.period_year
     month = data.period_month
 
-    # ── 1. Kunlik stavka ─────────────────────────────────────────────────
     hourly_rate = _calc_hourly_rate(
         emp_base_salary, emp_hourly_rate, emp_work_hours, emp_off_days, year, month
     )
     daily_wage = (hourly_rate * Decimal(emp_work_hours)).quantize(Decimal("1"))
 
-    # ── 2. Unpaid leave → leave_deduction ────────────────────────────────
     _, days_in_month = monthrange(year, month)
     period_start = date(year, month, 1)
-    period_end   = date(year, month, days_in_month)
+    period_end = date(year, month, days_in_month)
 
     unpaid_leaves = (await db.execute(
         select(Leave).where(
             Leave.employee_id == data.employee_id,
-            Leave.leave_type  == LeaveType.unpaid,
-            Leave.status      == LeaveStatus.approved,
-            Leave.start_date  <= period_end,
-            Leave.end_date    >= period_start,
+            Leave.leave_type == LeaveType.unpaid,
+            Leave.status == LeaveStatus.approved,
+            Leave.start_date <= period_end,
+            Leave.end_date >= period_start,
         )
     )).scalars().all()
 
     unpaid_days = Decimal("0")
     for lv in unpaid_leaves:
-        # Oyga to'g'ri keladigan kunlarni hisoblaymiz
         overlap_start = max(lv.start_date, period_start)
-        overlap_end   = min(lv.end_date,   period_end)
+        overlap_end = min(lv.end_date, period_end)
         days = (overlap_end - overlap_start).days + 1
         if days > 0:
             unpaid_days += Decimal(days)
 
     leave_deduction_from_leaves = (unpaid_days * daily_wage).quantize(Decimal("1"))
 
-    # ── 3. No-checkout kunlar → leave_deduction ───────────────────────────
     today = date.today()
     attendances = (await db.execute(
         select(Attendance).where(
             Attendance.employee_id == data.employee_id,
-            func.extract("year",  Attendance.date) == year,
+            func.extract("year", Attendance.date) == year,
             func.extract("month", Attendance.date) == month,
         )
     )).scalars().all()
@@ -145,80 +131,72 @@ async def create_salary_record(
     )
     leave_deduction_from_attendance = (Decimal(no_checkout_days) * daily_wage).quantize(Decimal("1"))
 
-    # ── 4. Eski auto-generated deductionlarni o'chirish (qayta hisob uchun)
     old_auto = (await db.execute(
         select(Deduction).where(
-            Deduction.employee_id    == data.employee_id,
-            Deduction.period_year   == year,
-            Deduction.period_month  == month,
+            Deduction.employee_id == data.employee_id,
+            Deduction.period_year == year,
+            Deduction.period_month == month,
             Deduction.auto_generated == True,
         )
     )).scalars().all()
     for d in old_auto:
         await db.delete(d)
 
-    # ── 5. Auto deductionlarni yaratish ──────────────────────────────────
-    auto_deductions: list[Deduction] = []
-
     if leave_deduction_from_leaves > 0:
-        auto_deductions.append(Deduction(
-            employee_id    = data.employee_id,
-            amount         = leave_deduction_from_leaves,
-            reason         = f"Haqsiz ta'til ({int(unpaid_days)} kun × {formatMoney_py(daily_wage)})",
-            deduction_type = DeductionType.absence,
-            period_year    = year,
-            period_month   = month,
-            auto_generated = True,
+        db.add(Deduction(
+            employee_id=data.employee_id,
+            amount=leave_deduction_from_leaves,
+            reason=f"Haqsiz ta'til ({int(unpaid_days)} kun x {formatMoney_py(daily_wage)})",
+            deduction_type=DeductionType.absence,
+            period_year=year,
+            period_month=month,
+            auto_generated=True,
         ))
 
     if leave_deduction_from_attendance > 0:
-        auto_deductions.append(Deduction(
-            employee_id    = data.employee_id,
-            amount         = leave_deduction_from_attendance,
-            reason         = f"Check-out qilinmagan ({no_checkout_days} kun × {formatMoney_py(daily_wage)})",
-            deduction_type = DeductionType.absence,
-            period_year    = year,
-            period_month   = month,
-            auto_generated = True,
+        db.add(Deduction(
+            employee_id=data.employee_id,
+            amount=leave_deduction_from_attendance,
+            reason=f"Check-out qilinmagan ({no_checkout_days} kun x {formatMoney_py(daily_wage)})",
+            deduction_type=DeductionType.absence,
+            period_year=year,
+            period_month=month,
+            auto_generated=True,
         ))
 
-    for d in auto_deductions:
-        db.add(d)
+    await db.flush()
 
-    await db.flush()  # ID larni olish uchun
-
-    # ── 6. Barcha bonus va deductionlarni yig'ish ─────────────────────────
     bonuses = (await db.execute(
         select(Bonus).where(
-            Bonus.employee_id  == data.employee_id,
-            Bonus.period_year  == year,
+            Bonus.employee_id == data.employee_id,
+            Bonus.period_year == year,
             Bonus.period_month == month,
         )
     )).scalars().all()
 
     deductions = (await db.execute(
         select(Deduction).where(
-            Deduction.employee_id  == data.employee_id,
-            Deduction.period_year  == year,
+            Deduction.employee_id == data.employee_id,
+            Deduction.period_year == year,
             Deduction.period_month == month,
         )
     )).scalars().all()
 
-    total_bonus      = sum(b.amount for b in bonuses)
-    total_deduction  = sum(d.amount for d in deductions)
-    late_deduction   = sum(d.amount for d in deductions if d.deduction_type.value == "late")
-    leave_deduction  = sum(d.amount for d in deductions if d.deduction_type.value == "absence")
+    total_bonus = sum(b.amount for b in bonuses)
+    total_deduction = sum(d.amount for d in deductions)
+    late_deduction = sum(d.amount for d in deductions if d.deduction_type.value == "late")
+    leave_deduction = sum(d.amount for d in deductions if d.deduction_type.value == "absence")
 
     record = SalaryRecord(
-        employee_id     = data.employee_id,
-        period_year     = year,
-        period_month    = month,
-        base_salary     = emp_base_salary,
-        total_bonus     = total_bonus,
-        total_deduction = total_deduction,
-        late_deduction  = late_deduction,
-        leave_deduction = leave_deduction,
-        notes           = data.notes,
+        employee_id=data.employee_id,
+        period_year=year,
+        period_month=month,
+        base_salary=emp_base_salary,
+        total_bonus=total_bonus,
+        total_deduction=total_deduction,
+        late_deduction=late_deduction,
+        leave_deduction=leave_deduction,
+        notes=data.notes,
     )
     db.add(record)
     await db.commit()
@@ -245,9 +223,6 @@ async def update_salary_status(
 
 # ── Daily Earnings ────────────────────────────────────────────
 
-WEEKDAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-
-
 def _calc_hourly_rate(
     base_salary: Decimal,
     hourly_rate: Decimal | None,
@@ -256,15 +231,10 @@ def _calc_hourly_rate(
     year: int,
     month: int,
 ) -> Decimal:
-    """
-    1) hourly_rate mavjud → shu
-    2) yo'q → base_salary / (ish_kunlari_soni * work_hours_per_day)
-    """
     if hourly_rate:
         return hourly_rate
 
     _, days_in_month = monthrange(year, month)
-
     working_days = sum(
         1 for d in range(1, days_in_month + 1)
         if WEEKDAY_NAMES[date(year, month, d).weekday()] not in off_days
@@ -282,26 +252,15 @@ async def get_daily_earnings(
     year: int,
     month: int,
 ) -> dict:
-    """
-    Xodimning shu oyda har kunlik ishlagan soati va daromadini qaytaradi.
-    - check_in + check_out → soat * stavka
-    - check_in bor, check_out yo'q, bugun → hozirgi vaqtgacha
-    - check_in bor, check_out yo'q, o'tgan kun → 0 (no_checkout)
-    - attendance yo'q → 0 (absent)
-    - dam olish kuni → off
-    """
     from app.models.attendance import Attendance
 
-    employee = await db.scalar(
-        select(Employee).where(Employee.id == employee_id)
-    )
+    employee = await db.scalar(select(Employee).where(Employee.id == employee_id))
     if not employee:
         raise ValueError("Employee not found")
 
-    # Fieldlarni oldindan o'qib olamiz
-    emp_base_salary    = employee.base_salary
-    emp_hourly_rate    = employee.hourly_rate
-    emp_work_hours     = employee.work_hours_per_day or 8
+    emp_base_salary = employee.base_salary
+    emp_hourly_rate = employee.hourly_rate
+    emp_work_hours = employee.work_hours_per_day or 8
     emp_off_days: list[str] = employee.off_days or []
 
     hourly_rate = _calc_hourly_rate(
@@ -415,9 +374,7 @@ async def get_bonuses(
     return total, list(items)
 
 
-async def create_bonus(
-    db: AsyncSession, data: BonusCreate, approved_by_id: int
-) -> Bonus:
+async def create_bonus(db: AsyncSession, data: BonusCreate, approved_by_id: int) -> Bonus:
     bonus = Bonus(**data.model_dump(), approved_by_id=approved_by_id)
     db.add(bonus)
     await db.commit()
