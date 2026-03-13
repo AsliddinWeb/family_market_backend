@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.employee import Employee
 from app.models.salary import Bonus, Deduction, SalaryRecord, SalaryStatus
 from app.schemas.salary import (
     BonusCreate,
@@ -25,7 +26,6 @@ async def get_salary_records(
     status: SalaryStatus | None,
     branch_id: int | None = None,
 ) -> tuple[int, list[SalaryRecord]]:
-    from app.models.employee import Employee
 
     q = (
         select(SalaryRecord)
@@ -62,7 +62,6 @@ async def create_salary_record(
     Xodimning base_salary va shu oyga tegishli
     bonus/deduction larni yig'ib SalaryRecord yaratadi.
     """
-    from app.models.employee import Employee
 
     employee = await db.get(Employee, data.employee_id)
     if not employee:
