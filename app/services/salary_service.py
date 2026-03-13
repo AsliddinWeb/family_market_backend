@@ -22,11 +22,16 @@ async def get_salary_records(
     year: int | None,
     month: int | None,
     status: SalaryStatus | None,
+    branch_id: int | None = None,
 ) -> tuple[int, list[SalaryRecord]]:
-    q = select(SalaryRecord)
+    from app.models.employee import Employee
+
+    q = select(SalaryRecord).join(Employee, SalaryRecord.employee_id == Employee.id)
 
     if employee_id:
         q = q.where(SalaryRecord.employee_id == employee_id)
+    if branch_id:
+        q = q.where(Employee.branch_id == branch_id)
     if year:
         q = q.where(SalaryRecord.period_year == year)
     if month:

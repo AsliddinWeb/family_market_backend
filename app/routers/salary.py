@@ -21,6 +21,7 @@ async def list_salary_records(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     employee_id: int | None = Query(None),
+    branch_id: int | None = Query(None),
     year: int | None = Query(None),
     month: int | None = Query(None, ge=1, le=12),
     status: SalaryStatus | None = Query(None),
@@ -28,7 +29,7 @@ async def list_salary_records(
     _: User = Depends(get_hr),
 ):
     total, items = await salary_service.get_salary_records(
-        db, page, size, employee_id, year, month, status
+        db, page, size, employee_id, year, month, status, branch_id
     )
     return PaginatedSalaryRecords(
         total=total, page=page, size=size,
