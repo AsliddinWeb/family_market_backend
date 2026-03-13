@@ -414,7 +414,12 @@ async function init() {
     await loadEmployeeInfo();
     loadFaceModels();         // background
     requestLocation();
-    await startCamera();
+    try {
+      await startCamera();
+    } catch (err) {
+      // __camera_denied__ — showCameraPermissionError allaqachon chaqirilgan
+      if (err.message !== '__camera_denied__') throw err;
+    }
 
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
@@ -593,11 +598,13 @@ function startFaceDetection() {
 // CAMERA
 // ═══════════════════════════════════════════════════════════════════════════
 async function startCamera() {
-  // Android uchun constraints — avval oddiy, keyin ideal
+  // Android Telegram WebApp da ba'zan kamera bloklangan bo'ladi —
+  // avval permission query qilamiz, keyin stream olamiz
   const constraints = [
-    { video: { facingMode: { exact: 'user' } }, audio: false },
-    { video: { facingMode: 'user' },             audio: false },
-    { video: true,                               audio: false },
+    { video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false },
+    { video: { facingMode: 'user' }, audio: false },
+    { video: { width: { ideal: 640 } }, audio: false },
+    { video: true, audio: false },
   ];
 
   let lastErr;
@@ -607,12 +614,96 @@ async function startCamera() {
       const video  = document.getElementById('video');
       video.srcObject = state.stream;
       await video.play();
+      hideCameraError();
       return;
     } catch (err) {
       lastErr = err;
     }
   }
-  throw new Error('Kamera ruxsati berilmadi. Sozlamalardan ruxsat bering');
+
+  // Barcha urinishlar muvaffaqiyatsiz — ruxsat so'rash tugmasini ko'rsat
+  showCameraPermissionError(lastErr);
+  throw new Error('__camera_denied__'); // init() da fatal error sifatida ko'rinmasin
+}
+
+function showCameraPermissionError(err) {
+  const isdenial = err && (
+    err.name === 'NotAllowedError' ||
+    err.name === 'PermissionDeniedError' ||
+    err.name === 'SecurityError'
+  );
+
+  const cameraCard = document.getElementById('camera-card');
+  cameraCard.innerHTML = `
+    <div style="text-align:center; padding: 20px 0;">
+      <div style="font-size:48px; margin-bottom:12px;">📷</div>
+      <p style="font-size:14px; font-weight:600; margin-bottom:6px; color:var(--text);">
+        Kamera ${isdenial ? 'ruxsati berilmadi' : 'topilmadi'}
+      </p>
+      <p style="font-size:12px; color:var(--muted); margin-bottom:16px; line-height:1.5;">
+        ${isdenial
+          ? 'Telegram sozlamalaridan kamera ruxsatini bering, keyin qayta urinib ko\'ring'
+          : 'Qurilmangizda kamera ishlamayapti yoki band'}
+      </p>
+      <button
+        class="btn btn-primary"
+        style="width:auto; padding: 10px 24px; margin: 0 auto; gap:8px;"
+        onclick="retryCameraPermission()"
+      >
+        📷 Ruxsat berish
+      </button>
+    </div>
+  `;
+
+  // Face check ni skip — kamera yo'q bo'lsa yuz tekshiruvini o'tkazib yuboramiz
+  state.faceScore = 1.0;
+  setCheck('face', 'ok', "⚠️ Kamera yo'q — o'tkazildi");
+  document.getElementById('step-face').className = 'step done';
+  checkAllReady();
+}
+
+function hideCameraError() {
+  // Agar kamera card qayta render qilingan bo'lsa — hech narsa qilmaymiz
+}
+
+async function retryCameraPermission() {
+  const cameraCard = document.getElementById('camera-card');
+  cameraCard.innerHTML = `
+    <div style="text-align:center; padding:20px;">
+      <div class="spinner" style="width:32px;height:32px;border-width:3px; margin:0 auto 12px;"></div>
+      <p style="font-size:13px; color:var(--muted);">Kamera ulanmoqda...</p>
+    </div>
+  `;
+
+  try {
+    await startCamera();
+    // Muvaffaqiyatli — camera card ni qayta tiklaymiz
+    const cameraCard2 = document.getElementById('camera-card');
+    cameraCard2.innerHTML = `
+      <div style="font-size:13px; color:var(--muted); margin-bottom:10px;">
+        📸 Yuzingizni oval ichiga joylang
+      </div>
+      <div class="camera-wrapper">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="canvas"></canvas>
+        <div class="face-overlay">
+          <div class="face-oval" id="face-oval"></div>
+        </div>
+      </div>
+      <div id="face-hint" class="alert info" style="margin-top:10px; display:none;"></div>
+    `;
+    const video = document.getElementById('video');
+    video.srcObject = state.stream;
+    await video.play();
+
+    // Face detection ni qayta ishga tushiramiz
+    if (state.faceModelsLoaded) startFaceDetection();
+
+  } catch (err) {
+    if (err.message !== '__camera_denied__') {
+      showCameraPermissionError(err);
+    }
+  }
 }
 
 function capturePhoto() {
@@ -637,6 +728,9 @@ function requestLocation() {
   if (!navigator.geolocation) {
     setCheck('loc', 'fail', "GPS qo'llab-quvvatlanmaydi");
     updateDistanceBadge(null);
+    // GPS yo'q bo'lsa ham davom etishga ruxsat
+    state.location = { latitude: 0, longitude: 0, accuracy: 0 };
+    checkAllReady();
     return;
   }
   setCheck('loc', 'pending', 'aniqlanmoqda...');
@@ -666,17 +760,60 @@ function requestLocation() {
         updateDistanceBadge(null);
       }
 
+      hideLocationError();
       document.getElementById('step-loc').className = 'step done';
       checkAllReady();
     },
-    () => {
-      setCheck('loc', 'fail', 'Joylashuv ruxsati berilmadi');
+    (err) => {
+      const isDenied = err.code === 1; // PERMISSION_DENIED
+      showLocationPermissionError(isDenied);
       updateDistanceBadge(null);
+      // Lokatsiya yo'q bo'lsa ham davom etishga ruxsat (force bilan yuboriladi)
       state.location = { latitude: 0, longitude: 0, accuracy: 0 };
       checkAllReady();
     },
     { timeout: 10000, enableHighAccuracy: true },
   );
+}
+
+function showLocationPermissionError(isDenied) {
+  setCheck('loc', 'fail', isDenied ? 'Ruxsat berilmadi' : 'Aniqlanmadi');
+
+  // Check list dagi loc qatoriga retry tugma qo'shamiz
+  const locRow = document.getElementById('icon-loc')?.closest('.check-item');
+  if (!locRow) return;
+
+  // Avvalgi retry tugmasini olib tashlaymiz
+  locRow.querySelector('.loc-retry-btn')?.remove();
+
+  if (isDenied) {
+    const btn = document.createElement('button');
+    btn.className = 'loc-retry-btn';
+    btn.style.cssText = `
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 12px; border-radius: 8px; border: none; cursor: pointer;
+      background: var(--primary); color: #fff; font-size: 12px; font-weight: 600;
+      white-space: nowrap; flex-shrink: 0;
+    `;
+    btn.innerHTML = '📍 Ruxsat berish';
+    btn.onclick = retryLocationPermission;
+    locRow.appendChild(btn);
+  }
+}
+
+function hideLocationError() {
+  document.getElementById('icon-loc')
+    ?.closest('.check-item')
+    ?.querySelector('.loc-retry-btn')
+    ?.remove();
+}
+
+function retryLocationPermission() {
+  // Geolocation API da programmatic ruxsat yo'q —
+  // qayta so'rov yuboramiz, foydalanuvchi accept qilishi kerak
+  setCheck('loc', 'pending', 'aniqlanmoqda...');
+  hideLocationError();
+  requestLocation();
 }
 
 function updateDistanceBadge(dist, radius) {
