@@ -191,6 +191,8 @@ def _to_out(emp) -> dict:
         "hourly_rate":        emp.hourly_rate,
         "work_hours_per_day": emp.work_hours_per_day,
         "off_days":           emp.off_days,
+        "custom_off_days":    emp.custom_off_days  if emp.custom_off_days  is not None else [],
+        "custom_work_days":   emp.custom_work_days if emp.custom_work_days is not None else [],
         "telegram_user_id":   emp.telegram_user_id,
         "photo":              emp.photo,
         "face_photo":         emp.face_photo,
