@@ -49,10 +49,20 @@ class Employee(Base, TimestampMixin, SoftDeleteMixin):
     )
     off_days: Mapped[list] = mapped_column(
         JSON, default=["saturday", "sunday"],
-        comment="Dam olish kunlari: ['saturday', 'sunday']"
+        comment="Haftalik dam olish kunlari: ['saturday', 'sunday']"
     )
 
-    # Rasm — ikki alohida field
+    # Aniq sana bo'yicha overridelar
+    custom_off_days: Mapped[list] = mapped_column(
+        JSON, default=[],
+        comment="Qo'shimcha dam olish kunlari (aniq sana): ['2026-03-08', '2026-03-15']"
+    )
+    custom_work_days: Mapped[list] = mapped_column(
+        JSON, default=[],
+        comment="Odatda dam olish kuni bo'lsa ham ishlagan kunlar: ['2026-03-01']"
+    )
+
+    # Rasm
     photo: Mapped[str | None] = mapped_column(
         String(255), nullable=True,
         comment="Profil rasmi yo'li"
@@ -79,17 +89,27 @@ class Employee(Base, TimestampMixin, SoftDeleteMixin):
     kpis: Mapped[list["KPI"]] = relationship(back_populates="employee")
 
     def get_effective_hourly_rate(self) -> Decimal:
-        """
-        Soatlik stavkani hisoblash:
-        1. hourly_rate belgilangan bo'lsa → uni ishlatadi
-        2. Aks holda → base_salary / (work_hours_per_day * 22)
-        """
         if self.hourly_rate:
             return self.hourly_rate
         working_hours_per_month = Decimal(self.work_hours_per_day * 22)
         return self.base_salary / working_hours_per_month
 
     def is_off_day(self, d: date) -> bool:
-        """Berilgan sana dam olish kuni ekanligini tekshiradi"""
+        """
+        Berilgan sana dam olish kuni ekanligini tekshiradi.
+        Prioritet tartibi:
+        1. custom_work_days da bo'lsa → ish kuni (override)
+        2. custom_off_days da bo'lsa → dam olish kuni (override)
+        3. off_days (haftalik pattern) bo'yicha
+        """
+        date_str = d.isoformat()
+        custom_work = self.custom_work_days or []
+        custom_off  = self.custom_off_days or []
+
+        if date_str in custom_work:
+            return False
+        if date_str in custom_off:
+            return True
+
         day_name = WEEKDAY_NAMES[d.weekday()]
         return day_name in (self.off_days or [])

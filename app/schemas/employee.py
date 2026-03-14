@@ -27,6 +27,8 @@ class EmployeeCreate(BaseModel):
     hourly_rate: Decimal | None = None
     work_hours_per_day: int = 8
     off_days: List[str] = ["saturday", "sunday"]
+    custom_off_days: List[str] = []
+    custom_work_days: List[str] = []
 
     telegram_user_id: str | None = None
     photo: str | None = None
@@ -73,6 +75,8 @@ class EmployeeUpdate(BaseModel):
     hourly_rate: Decimal | None = None
     work_hours_per_day: int | None = None
     off_days: List[str] | None = None
+    custom_off_days: List[str] | None = None   # aniq sana dam olish kunlari
+    custom_work_days: List[str] | None = None  # aniq sana ish kunlari (override)
     telegram_user_id: str | None = None
     photo: str | None = None
     face_photo: str | None = None
@@ -106,6 +110,8 @@ class EmployeeOut(BaseModel):
     hourly_rate: Decimal | None = None
     work_hours_per_day: int = 8
     off_days: List[str] = ["saturday", "sunday"]
+    custom_off_days: List[str] = []
+    custom_work_days: List[str] = []
     telegram_user_id: str | None = None
     photo: str | None = None
     face_photo: str | None = None
