@@ -1,14 +1,30 @@
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.employee import Employee
 from app.models.leave import Leave, LeaveStatus, LeaveType
 from app.schemas.leave import LeaveCreate, LeaveStatusUpdate
 
 
-def _calc_days(start: date, end: date) -> int:
-    return (end - start).days + 1
+def calc_working_days(start: date, end: date, employee: Employee | None = None) -> int:
+    """
+    start..end oralig'idagi ish kunlarini hisoblaydi.
+    employee berilsa — uning is_off_day() metodini ishlatadi
+    (custom_off_days, custom_work_days, off_days hammasi hisobga olinadi).
+    employee berilmasa — oddiy kalendar kunlari (end - start + 1).
+    """
+    if employee is None:
+        return (end - start).days + 1
+
+    count = 0
+    current = start
+    while current <= end:
+        if not employee.is_off_day(current):
+            count += 1
+        current += timedelta(days=1)
+    return count
 
 
 async def get_leaves(
@@ -38,10 +54,12 @@ async def get_leave(db: AsyncSession, leave_id: int) -> Leave | None:
 
 
 async def create_leave(db: AsyncSession, data: LeaveCreate) -> Leave:
-    leave = Leave(
-        **data.model_dump(),
-        days_count=_calc_days(data.start_date, data.end_date),
+    employee = await db.scalar(
+        select(Employee).where(Employee.id == data.employee_id)
     )
+    days_count = calc_working_days(data.start_date, data.end_date, employee)
+
+    leave = Leave(**data.model_dump(), days_count=days_count)
     db.add(leave)
     await db.commit()
     await db.refresh(leave)
@@ -59,6 +77,14 @@ async def update_leave_status(
         leave.rejection_reason = data.rejection_reason
     if data.status == LeaveStatus.approved:
         leave.approved_by_id = approved_by_id
+        # Tasdiqlanganda days_count qayta hisoblanadi
+        # (xodim off_days keyinroq o'zgargan bo'lishi mumkin)
+        employee = await db.scalar(
+            select(Employee).where(Employee.id == leave.employee_id)
+        )
+        if employee:
+            leave.days_count = calc_working_days(leave.start_date, leave.end_date, employee)
+
     await db.commit()
     await db.refresh(leave)
     return leave
