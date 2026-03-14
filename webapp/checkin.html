@@ -21,7 +21,6 @@
       --amber:        #f59e0b;
       --text:         #f1f5f9;
       --muted:        #64748b;
-      /* Mode renkler */
       --mode-color:   #6366f1;
       --mode-bg:      rgba(99,102,241,0.15);
     }
@@ -44,7 +43,6 @@
       padding: 16px;
     }
 
-    /* ── Mode banner ── */
     .mode-banner {
       display: flex;
       align-items: center;
@@ -59,7 +57,6 @@
     }
     .mode-banner .mode-icon { font-size: 22px; }
 
-    /* ── Header ── */
     .header { display: flex; align-items: center; gap: 12px; }
     .avatar {
       width: 48px; height: 48px;
@@ -72,7 +69,6 @@
     .header-text h2 { font-size: 16px; font-weight: 600; }
     .header-text p  { font-size: 12px; color: var(--muted); margin-top: 2px; }
 
-    /* ── Badges ── */
     .badge {
       display: inline-flex; align-items: center; gap: 6px;
       padding: 4px 10px; border-radius: 20px;
@@ -83,7 +79,6 @@
     .badge.amber  { background: rgba(245,158,11,0.15);  color: var(--amber); }
     .badge.purple { background: var(--primary-light);   color: var(--primary); }
 
-    /* ── Masofa badge ── */
     .distance-badge {
       display: flex; align-items: center; gap: 8px;
       padding: 8px 12px; border-radius: 10px;
@@ -93,7 +88,6 @@
     .distance-badge.outside { background: rgba(239,68,68,0.12); color: var(--red);   border: 1px solid rgba(239,68,68,0.3); }
     .distance-badge.loading { background: var(--border);         color: var(--muted); }
 
-    /* ── Camera ── */
     .camera-wrapper {
       position: relative; width: 100%;
       aspect-ratio: 4/3; border-radius: 12px;
@@ -116,7 +110,6 @@
     .face-oval.detected { border-color: var(--green); }
     .face-oval.no-face  { border-color: var(--red); }
 
-    /* ── Steps ── */
     .steps { display: flex; gap: 8px; align-items: center; }
     .step {
       flex: 1; height: 4px; border-radius: 4px;
@@ -125,7 +118,6 @@
     .step.done   { background: var(--green); }
     .step.active { background: var(--primary); }
 
-    /* ── Checklist ── */
     .check-item {
       display: flex; align-items: center; gap: 10px;
       padding: 10px 0; border-bottom: 1px solid var(--border);
@@ -141,7 +133,6 @@
     .check-label { font-size: 13px; flex: 1; }
     .check-value { font-size: 12px; color: var(--muted); }
 
-    /* ── Buttons ── */
     .btn {
       width: 100%; padding: 14px;
       border: none; border-radius: 12px; cursor: pointer;
@@ -157,7 +148,6 @@
     }
     .btn-danger { background: var(--red); color: #fff; }
 
-    /* ── Confirm modal ── */
     .modal-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.7);
       display: flex; align-items: flex-end; justify-content: center;
@@ -174,7 +164,6 @@
     .modal-actions { display: flex; gap: 10px; }
     .modal-actions .btn { padding: 12px; font-size: 14px; }
 
-    /* ── Result ── */
     .result { text-align: center; padding: 24px 16px; }
     .result-icon { font-size: 56px; margin-bottom: 12px; }
     .result h2   { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
@@ -191,7 +180,6 @@
     .result-distance.inside  { background: rgba(34,197,94,0.1); color: var(--green); }
     .result-distance.outside { background: rgba(239,68,68,0.1);  color: var(--red); }
 
-    /* ── Spinner ── */
     .spinner {
       width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.3);
       border-top-color: #fff; border-radius: 50%;
@@ -199,7 +187,6 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Alerts ── */
     .alert {
       padding: 10px 14px; border-radius: 10px;
       font-size: 13px; line-height: 1.5;
@@ -212,16 +199,13 @@
 </head>
 <body>
 
-<!-- ══ Asosiy UI ══════════════════════════════════════════════════════════ -->
 <div id="app" style="display:none; flex-direction:column; gap:16px;">
 
-  <!-- Mode banner -->
   <div class="mode-banner" id="mode-banner">
     <span class="mode-icon" id="mode-icon">📥</span>
     <span id="mode-label">Kelishni qayd etish</span>
   </div>
 
-  <!-- Header: xodim ma'lumotlari -->
   <div class="card">
     <div class="header">
       <div class="avatar" id="emp-avatar">?</div>
@@ -231,17 +215,14 @@
       </div>
     </div>
     <div style="margin-top:10px;">
-      <!-- Bugungi holat badge -->
       <span class="badge" id="today-status" style="display:none"></span>
       <span class="badge purple" id="off-day-badge" style="display:none">🎉 Dam olish kuni</span>
     </div>
-    <!-- Masofa badge -->
     <div class="distance-badge loading" id="distance-badge">
       <span>📍</span><span id="distance-text">Joylashuv aniqlanmoqda...</span>
     </div>
   </div>
 
-  <!-- Progress steps -->
   <div class="card">
     <div style="font-size:12px; color:var(--muted); margin-bottom:8px;">Tekshiruv bosqichlari</div>
     <div class="steps">
@@ -251,7 +232,6 @@
     </div>
   </div>
 
-  <!-- Kamera -->
   <div class="card" id="camera-card">
     <div style="font-size:13px; color:var(--muted); margin-bottom:10px;">
       📸 Yuzingizni oval ichiga joylang
@@ -266,7 +246,6 @@
     <div id="face-hint" class="alert info" style="margin-top:10px; display:none;"></div>
   </div>
 
-  <!-- Checklist -->
   <div class="card">
     <div class="check-item">
       <div class="check-icon" id="icon-loc">📍</div>
@@ -285,7 +264,6 @@
     </div>
   </div>
 
-  <!-- Submit tugma -->
   <button class="btn btn-primary" id="btn-submit" disabled onclick="onSubmitClick()">
     ✅ Qayd etish
   </button>
@@ -293,7 +271,6 @@
   <div id="error-msg" style="display:none;"></div>
 </div>
 
-<!-- ══ Qayta qayd etish ogohlantirish modal ═══════════════════════════════ -->
 <div class="modal-overlay" id="confirm-modal" style="display:none;">
   <div class="modal-box">
     <div class="modal-icon">⚠️</div>
@@ -306,7 +283,6 @@
   </div>
 </div>
 
-<!-- ══ Natija ekrani ═══════════════════════════════════════════════════════ -->
 <div id="result-screen" style="display:none;">
   <div class="card result">
     <div class="result-icon" id="res-icon">✅</div>
@@ -320,7 +296,6 @@
   </div>
 </div>
 
-<!-- ══ Loading ekrani ════════════════════════════════════════════════════ -->
 <div id="loading-screen" style="display:flex; flex-direction:column; align-items:center;
      justify-content:center; min-height:60vh; gap:16px;">
   <div class="spinner" style="width:40px; height:40px; border-width:3px;"></div>
@@ -336,34 +311,34 @@ const FACE_THRESHOLD  = 0.6;
 const FACE_MODELS_URL = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MODE — URL dan o'qiladi: ?mode=checkin yoki ?mode=checkout
+// MODE
 // ═══════════════════════════════════════════════════════════════════════════
 const MODE = new URLSearchParams(window.location.search).get('mode') === 'checkout'
   ? 'checkout'
-  : 'checkin';   // default: checkin
+  : 'checkin';
 
 const MODE_CONFIG = {
   checkin: {
-    icon:       '📥',
-    label:      'Kelishni qayd etish',
-    btnText:    '📥 Kelishni qayd etish',
-    color:      '#6366f1',
-    colorBg:    'rgba(99,102,241,0.15)',
-    apiPath:    '/api/telegram/webapp-checkin',
-    resIcon:    { present: '✅', late: '⏰', holiday: '🎉' },
-    resTitle:   { present: 'Kelish qayd etildi!', late: 'Kech keldingiz', holiday: 'Dam olish kunida keldingiz!' },
-    resMsg:     { present: "Kelishingiz o'z vaqtida qayd etildi.", late: (m) => `${m} daqiqa kechikdingiz.`, holiday: 'Bugun dam olish kuni. Bonus hisoblandi.' },
+    icon:    '📥',
+    label:   'Kelishni qayd etish',
+    btnText: '📥 Kelishni qayd etish',
+    color:   '#6366f1',
+    colorBg: 'rgba(99,102,241,0.15)',
+    apiPath: '/api/telegram/webapp-checkin',
+    resIcon:  { present: '✅', late: '⏰', holiday: '🎉' },
+    resTitle: { present: 'Kelish qayd etildi!', late: 'Kech keldingiz', holiday: 'Dam olish kunida keldingiz!' },
+    resMsg:   { present: "Kelishingiz o'z vaqtida qayd etildi.", late: (m) => `${m} daqiqa kechikdingiz.`, holiday: 'Bugun dam olish kuni. Bonus hisoblandi.' },
   },
   checkout: {
-    icon:       '📤',
-    label:      'Ketishni qayd etish',
-    btnText:    '📤 Ketishni qayd etish',
-    color:      '#f59e0b',
-    colorBg:    'rgba(245,158,11,0.15)',
-    apiPath:    '/api/telegram/webapp-checkout',
-    resIcon:    { default: '👋' },
-    resTitle:   { default: 'Ketish qayd etildi!' },
-    resMsg:     { default: (t) => `Ketish vaqti: ${t}` },
+    icon:    '📤',
+    label:   'Ketishni qayd etish',
+    btnText: '📤 Ketishni qayd etish',
+    color:   '#f59e0b',
+    colorBg: 'rgba(245,158,11,0.15)',
+    apiPath: '/api/telegram/webapp-checkout',
+    resIcon:  { default: '👋' },
+    resTitle: { default: 'Ketish qayd etildi!' },
+    resMsg:   { default: (t) => `Ketish vaqti: ${t}` },
   },
 };
 
@@ -384,18 +359,16 @@ const state = {
   faceModelsLoaded:  false,
   refDescriptor:     null,
   detectionInterval: null,
-  alreadyDone:       false,   // bugun allaqachon qayd etilganmi
-  existingTime:      null,    // mavjud vaqt (ogohlantirish uchun)
-  force:             false,   // True → geofence bypass + qayta yozish
+  alreadyDone:       false,
+  existingTime:      null,
+  force:             false,
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════════════════════
 async function init() {
-  // Mode UI ni sozlash
   applyModeUI();
-
   state.tg.ready();
   state.tg.expand();
   state.tg.setBackgroundColor('#0f1117');
@@ -412,12 +385,11 @@ async function init() {
 
   try {
     await loadEmployeeInfo();
-    loadFaceModels();         // background
+    loadFaceModels();       // background — timeout bilan
     requestLocation();
     try {
       await startCamera();
     } catch (err) {
-      // __camera_denied__ — showCameraPermissionError allaqachon chaqirilgan
       if (err.message !== '__camera_denied__') throw err;
     }
 
@@ -438,8 +410,6 @@ function applyModeUI() {
   document.getElementById('mode-icon').textContent  = CFG.icon;
   document.getElementById('mode-label').textContent = CFG.label;
   document.getElementById('btn-submit').textContent  = CFG.btnText;
-
-  // CSS variables ni override
   document.documentElement.style.setProperty('--mode-color', CFG.color);
   document.documentElement.style.setProperty('--mode-bg',    CFG.colorBg);
 }
@@ -457,37 +427,32 @@ async function loadEmployeeInfo() {
   state.employeeInfo = await res.json();
   const info = state.employeeInfo;
 
-  // Header
   const name = info.full_name || 'Xodim';
   document.getElementById('emp-avatar').textContent = name[0].toUpperCase();
   document.getElementById('emp-name').textContent   = name;
   document.getElementById('emp-branch').textContent = info.branch?.name || '—';
 
-  // Dam olish kuni
   if (info.is_off_day) {
     document.getElementById('off-day-badge').style.display = 'inline-flex';
   }
 
-  // Bugungi holat + qayta qayd ogohlantirish
   if (MODE === 'checkin') {
     if (info.today_checked_in) {
-      state.alreadyDone   = true;
-      state.existingTime  = info.today_check_in_time;
+      state.alreadyDone  = true;
+      state.existingTime = info.today_check_in_time;
       const badge = document.getElementById('today-status');
       badge.style.display = 'inline-flex';
       badge.className     = 'badge amber';
       badge.textContent   = `⚠️ Kelish allaqachon qayd etilgan: ${formatTime(info.today_check_in_time)}`;
     }
   } else {
-    // checkout mode
     if (!info.today_checked_in) {
       throw new Error("Siz bugun kelishni qayd etmadingiz. Avval kelishni qayd eting.");
     }
     if (info.today_checked_out) {
-      state.alreadyDone   = true;
-      state.existingTime  = info.today_check_out_time;
+      state.alreadyDone  = true;
+      state.existingTime = info.today_check_out_time;
     }
-    // Kelish vaqtini ko'rsatish
     const badge = document.getElementById('today-status');
     badge.style.display = 'inline-flex';
     badge.className     = 'badge green';
@@ -495,14 +460,13 @@ async function loadEmployeeInfo() {
 
     if (info.today_checked_out) {
       const badge2 = document.createElement('span');
-      badge2.className     = 'badge amber';
+      badge2.className        = 'badge amber';
       badge2.style.marginLeft = '6px';
-      badge2.textContent   = `⚠️ Ketish: ${formatTime(info.today_check_out_time)}`;
+      badge2.textContent      = `⚠️ Ketish: ${formatTime(info.today_check_out_time)}`;
       badge.parentElement.appendChild(badge2);
     }
   }
 
-  // Yuz referans
   if (info.face_photo_url) {
     loadReferenceDescriptor(info.face_photo_url);
   } else {
@@ -515,17 +479,37 @@ async function loadEmployeeInfo() {
 // ═══════════════════════════════════════════════════════════════════════════
 // FACE-API.JS
 // ═══════════════════════════════════════════════════════════════════════════
+
+// Android sekin tarmoq uchun timeout helper
+function withTimeout(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) =>
+    timer = setTimeout(() => reject(new Error('timeout')), ms)
+  );
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function loadFaceModels() {
+  const skipFace = () => {
+    state.faceScore = 1.0;
+    setCheck('face', 'ok', "⚠️ Yuz tekshiruvi o'tkazib yuborildi");
+    checkAllReady();
+  };
   try {
-    await faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODELS_URL);
-    await faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_MODELS_URL);
-    await faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODELS_URL);
+    // Parallel yuklash + 12 soniya timeout (Android sekin tarmoq uchun)
+    await withTimeout(
+      Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODELS_URL),
+        faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_MODELS_URL),
+        faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODELS_URL),
+      ]),
+      12000
+    );
     state.faceModelsLoaded = true;
     startFaceDetection();
-  } catch {
-    state.faceScore = 1.0;
-    setCheck('face', 'ok', "⚠️ Yuz tekshiruvi yuklanmadi");
-    checkAllReady();
+  } catch (err) {
+    console.warn('face-api timeout yoki xato:', err?.message);
+    skipFace();
   }
 }
 
@@ -554,38 +538,38 @@ function startFaceDetection() {
         .withFaceDescriptor();
 
       if (!detection) {
-        oval.className       = 'face-oval no-face';
-        hint.style.display   = 'block';
-        hint.className       = 'alert error';
-        hint.textContent     = "😐 Yuzingizni kadrga to'liq kiriting";
+        oval.className     = 'face-oval no-face';
+        hint.style.display = 'block';
+        hint.className     = 'alert error';
+        hint.textContent   = "😐 Yuzingizni kadrga to'liq kiriting";
         return;
       }
 
       oval.className = 'face-oval detected';
 
       if (state.refDescriptor) {
-        const distance    = faceapi.euclideanDistance(detection.descriptor, state.refDescriptor);
-        state.faceScore   = Math.max(0, 1 - distance);
-        const pct         = Math.round(state.faceScore * 100);
+        const distance  = faceapi.euclideanDistance(detection.descriptor, state.refDescriptor);
+        state.faceScore = Math.max(0, 1 - distance);
+        const pct       = Math.round(state.faceScore * 100);
 
         if (state.faceScore >= FACE_THRESHOLD) {
-          hint.style.display  = 'block';
-          hint.className      = 'alert success';
-          hint.textContent    = `✅ Yuz aniqlandi (${pct}% mos)`;
+          hint.style.display = 'block';
+          hint.className     = 'alert success';
+          hint.textContent   = `✅ Yuz aniqlandi (${pct}% mos)`;
           setCheck('face', 'ok', `${pct}% mos`);
           document.getElementById('step-face').className = 'step done';
           checkAllReady();
         } else {
-          hint.style.display  = 'block';
-          hint.className      = 'alert error';
-          hint.textContent    = `⚠️ Mos kelmadi (${pct}%). Yaxshi yorug'likda qayta urinib ko'ring`;
+          hint.style.display = 'block';
+          hint.className     = 'alert error';
+          hint.textContent   = `⚠️ Mos kelmadi (${pct}%). Yaxshi yorug'likda qayta urinib ko'ring`;
           setCheck('face', 'fail', `${pct}%`);
         }
       } else {
-        state.faceScore = 1.0;
-        hint.style.display  = 'block';
-        hint.className      = 'alert success';
-        hint.textContent    = '✅ Yuz aniqlandi';
+        state.faceScore    = 1.0;
+        hint.style.display = 'block';
+        hint.className     = 'alert success';
+        hint.textContent   = '✅ Yuz aniqlandi';
         setCheck('face', 'ok', 'Aniqlandi');
         document.getElementById('step-face').className = 'step done';
         checkAllReady();
@@ -598,8 +582,6 @@ function startFaceDetection() {
 // CAMERA
 // ═══════════════════════════════════════════════════════════════════════════
 async function startCamera() {
-  // Android Telegram WebApp da ba'zan kamera bloklangan bo'ladi —
-  // avval permission query qilamiz, keyin stream olamiz
   const constraints = [
     { video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false },
     { video: { facingMode: 'user' }, audio: false },
@@ -613,7 +595,7 @@ async function startCamera() {
       state.stream = await navigator.mediaDevices.getUserMedia(c);
       const video  = document.getElementById('video');
       video.srcObject = state.stream;
-      await video.play();
+      try { await video.play(); } catch { /* Android autoplay — ignore */ }
       hideCameraError();
       return;
     } catch (err) {
@@ -621,9 +603,8 @@ async function startCamera() {
     }
   }
 
-  // Barcha urinishlar muvaffaqiyatsiz — ruxsat so'rash tugmasini ko'rsat
   showCameraPermissionError(lastErr);
-  throw new Error('__camera_denied__'); // init() da fatal error sifatida ko'rinmasin
+  throw new Error('__camera_denied__');
 }
 
 function showCameraPermissionError(err) {
@@ -642,29 +623,24 @@ function showCameraPermissionError(err) {
       </p>
       <p style="font-size:12px; color:var(--muted); margin-bottom:16px; line-height:1.5;">
         ${isdenial
-          ? 'Telegram sozlamalaridan kamera ruxsatini bering, keyin qayta urinib ko\'ring'
+          ? "Telegram sozlamalaridan kamera ruxsatini bering, keyin qayta urinib ko'ring"
           : 'Qurilmangizda kamera ishlamayapti yoki band'}
       </p>
-      <button
-        class="btn btn-primary"
-        style="width:auto; padding: 10px 24px; margin: 0 auto; gap:8px;"
-        onclick="retryCameraPermission()"
-      >
+      <button class="btn btn-primary"
+        style="width:auto; padding: 10px 24px; margin: 0 auto;"
+        onclick="retryCameraPermission()">
         📷 Ruxsat berish
       </button>
     </div>
   `;
 
-  // Face check ni skip — kamera yo'q bo'lsa yuz tekshiruvini o'tkazib yuboramiz
   state.faceScore = 1.0;
   setCheck('face', 'ok', "⚠️ Kamera yo'q — o'tkazildi");
   document.getElementById('step-face').className = 'step done';
   checkAllReady();
 }
 
-function hideCameraError() {
-  // Agar kamera card qayta render qilingan bo'lsa — hech narsa qilmaymiz
-}
+function hideCameraError() { /* intentionally empty */ }
 
 async function retryCameraPermission() {
   const cameraCard = document.getElementById('camera-card');
@@ -677,7 +653,6 @@ async function retryCameraPermission() {
 
   try {
     await startCamera();
-    // Muvaffaqiyatli — camera card ni qayta tiklaymiz
     const cameraCard2 = document.getElementById('camera-card');
     cameraCard2.innerHTML = `
       <div style="font-size:13px; color:var(--muted); margin-bottom:10px;">
@@ -694,15 +669,10 @@ async function retryCameraPermission() {
     `;
     const video = document.getElementById('video');
     video.srcObject = state.stream;
-    await video.play();
-
-    // Face detection ni qayta ishga tushiramiz
+    try { await video.play(); } catch { /* ignore */ }
     if (state.faceModelsLoaded) startFaceDetection();
-
   } catch (err) {
-    if (err.message !== '__camera_denied__') {
-      showCameraPermissionError(err);
-    }
+    if (err.message !== '__camera_denied__') showCameraPermissionError(err);
   }
 }
 
@@ -712,8 +682,8 @@ function capturePhoto() {
   canvas.width  = video.videoWidth  || 640;
   canvas.height = video.videoHeight || 480;
   canvas.getContext('2d').drawImage(video, 0, 0);
-  const dataUrl        = canvas.toDataURL('image/jpeg', 0.85);
-  state.photoBase64    = dataUrl.split(',')[1];
+  const dataUrl     = canvas.toDataURL('image/jpeg', 0.85);
+  state.photoBase64 = dataUrl.split(',')[1];
 }
 
 function stopCamera() {
@@ -722,13 +692,12 @@ function stopCamera() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// GEOLOCATION — masofa hisoblash va badge
+// GEOLOCATION
 // ═══════════════════════════════════════════════════════════════════════════
 function requestLocation() {
   if (!navigator.geolocation) {
     setCheck('loc', 'fail', "GPS qo'llab-quvvatlanmaydi");
     updateDistanceBadge(null);
-    // GPS yo'q bo'lsa ham davom etishga ruxsat
     state.location = { latitude: 0, longitude: 0, accuracy: 0 };
     checkAllReady();
     return;
@@ -765,10 +734,9 @@ function requestLocation() {
       checkAllReady();
     },
     (err) => {
-      const isDenied = err.code === 1; // PERMISSION_DENIED
+      const isDenied = err.code === 1;
       showLocationPermissionError(isDenied);
       updateDistanceBadge(null);
-      // Lokatsiya yo'q bo'lsa ham davom etishga ruxsat (force bilan yuboriladi)
       state.location = { latitude: 0, longitude: 0, accuracy: 0 };
       checkAllReady();
     },
@@ -778,12 +746,8 @@ function requestLocation() {
 
 function showLocationPermissionError(isDenied) {
   setCheck('loc', 'fail', isDenied ? 'Ruxsat berilmadi' : 'Aniqlanmadi');
-
-  // Check list dagi loc qatoriga retry tugma qo'shamiz
   const locRow = document.getElementById('icon-loc')?.closest('.check-item');
   if (!locRow) return;
-
-  // Avvalgi retry tugmasini olib tashlaymiz
   locRow.querySelector('.loc-retry-btn')?.remove();
 
   if (isDenied) {
@@ -809,8 +773,6 @@ function hideLocationError() {
 }
 
 function retryLocationPermission() {
-  // Geolocation API da programmatic ruxsat yo'q —
-  // qayta so'rov yuboramiz, foydalanuvchi accept qilishi kerak
   setCheck('loc', 'pending', 'aniqlanmoqda...');
   hideLocationError();
   requestLocation();
@@ -821,7 +783,7 @@ function updateDistanceBadge(dist, radius) {
   const text  = document.getElementById('distance-text');
 
   if (dist === null || dist === undefined) {
-    badge.className = 'distance-badge loading';
+    badge.className  = 'distance-badge loading';
     text.textContent = "Joylashuv aniqlanmoqda...";
     return;
   }
@@ -850,16 +812,14 @@ function haversine(lat1, lon1, lat2, lon2) {
 // UI HELPERS
 // ═══════════════════════════════════════════════════════════════════════════
 function setCheck(key, status, value) {
-  const icon  = document.getElementById(`icon-${key}`);
-  const val   = document.getElementById(`val-${key}`);
+  const icon   = document.getElementById(`icon-${key}`);
+  const val    = document.getElementById(`val-${key}`);
   const emojis = { loc: '📍', face: '👤', time: '🕐' };
-
   icon.textContent = emojis[key];
   val.textContent  = value || '';
-
-  if (status === 'ok')   { icon.className = 'check-icon ok'; }
-  else if (status === 'fail') { icon.className = 'check-icon fail'; }
-  else                   { icon.className = 'check-icon'; }
+  if (status === 'ok')        icon.className = 'check-icon ok';
+  else if (status === 'fail') icon.className = 'check-icon fail';
+  else                        icon.className = 'check-icon';
 }
 
 function updateTime() {
@@ -879,7 +839,7 @@ function checkAllReady() {
 
 function formatTime(t) {
   if (!t) return '—';
-  return t.slice(0, 5); // "HH:MM:SS" → "HH:MM"
+  return t.slice(0, 5);
 }
 
 function showFatalError(msg) {
@@ -902,10 +862,9 @@ function showInlineError(msg) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SUBMIT — tugma bosildi
+// SUBMIT
 // ═══════════════════════════════════════════════════════════════════════════
 function onSubmitClick() {
-  // Bugun allaqachon qayd etilganmi?
   if (state.alreadyDone && state.existingTime && !state.force) {
     const timeStr     = formatTime(state.existingTime);
     const now         = new Date();
@@ -922,7 +881,6 @@ function onSubmitClick() {
     document.getElementById('confirm-modal').style.display = 'flex';
     return;
   }
-
   doSubmit();
 }
 
@@ -936,9 +894,6 @@ function confirmSubmit() {
   doSubmit();
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ACTUAL SUBMIT
-// ═══════════════════════════════════════════════════════════════════════════
 async function doSubmit() {
   const btn = document.getElementById('btn-submit');
   btn.disabled = true;
@@ -956,7 +911,6 @@ async function doSubmit() {
     force:        state.force,
   };
 
-  // Checkin uchun face_match_score ham kerak
   if (MODE === 'checkin') {
     body.face_match_score = state.faceScore;
   }
@@ -973,10 +927,9 @@ async function doSubmit() {
       btn.disabled = false;
       btn.innerHTML = CFG.btnText;
 
-      // Geofence xatosi → force confirm modal
       const detail = data.detail || '';
       if (!state.force && (detail.includes('uzoqdasiz') || detail.includes('radius'))) {
-        const dist = state.distanceMeters ? `${Math.round(state.distanceMeters)} m` : '';
+        const dist        = state.distanceMeters ? `${Math.round(state.distanceMeters)} m` : '';
         const actionLabel = MODE === 'checkin' ? 'Kelish' : 'Ketish';
         document.getElementById('confirm-title').textContent = '📍 Ofisdan uzoqdasiz';
         document.getElementById('confirm-msg').innerHTML =
@@ -1024,23 +977,20 @@ function showResult(data) {
   document.getElementById('res-title').textContent = title;
   document.getElementById('res-msg').textContent   = msg;
 
-  // Masofa
   const dist = data.distance_meters;
   if (dist !== null && dist !== undefined) {
-    const radius  = state.employeeInfo?.branch?.radius_meters || 200;
-    const distEl  = document.getElementById('res-distance');
+    const radius = state.employeeInfo?.branch?.radius_meters || 200;
+    const distEl = document.getElementById('res-distance');
     distEl.style.display = 'block';
-
     if (dist <= radius) {
-      distEl.className = 'result-distance inside';
+      distEl.className   = 'result-distance inside';
       distEl.textContent = `📍 Ofis qamrovida (${Math.round(dist)} m)`;
     } else {
-      distEl.className = 'result-distance outside';
+      distEl.className   = 'result-distance outside';
       distEl.textContent = `📍 Ofisdan ${Math.round(dist)} m uzoqda`;
     }
   }
 
-  // Bonus (faqat checkin/holiday uchun)
   if (data.bonus_amount) {
     const bonusEl = document.getElementById('res-bonus');
     bonusEl.style.display = 'block';
