@@ -94,6 +94,7 @@ async def update_employee(
         "branch_id", "department_id", "position", "employment_type",
         "hire_date", "base_salary", "telegram_user_id", "photo", "is_active",
         "hourly_rate", "work_hours_per_day", "off_days", "face_photo",
+        "custom_off_days", "custom_work_days",
     }
     user_fields = {"full_name", "role"}
 
