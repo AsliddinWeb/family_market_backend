@@ -17,6 +17,7 @@ from app.core.config import TZ, settings
 from app.core.database import get_db
 from app.core.dependencies import get_admin
 from app.models.employee import Employee
+from app.models.salary import Bonus, BonusType
 from app.models.user import User
 from app.schemas.attendance import CheckInRequest, CheckOutRequest
 from app.services import attendance_service
@@ -62,7 +63,7 @@ def verify_telegram_webapp_data(init_data: str, bot_token: str) -> dict | None:
             f"{k}={v}" for k, v in sorted(parsed.items())
         )
 
-        secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+        secret_key    = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
         expected_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
         if not hmac.compare_digest(expected_hash, received_hash):
@@ -79,13 +80,11 @@ def verify_telegram_webapp_data(init_data: str, bot_token: str) -> dict | None:
 # ─── Yordamchi: xodimni telegram_user_id orqali olish ───────────────────────
 
 async def _get_employee_by_init_data(init_data: str, db: AsyncSession) -> Employee:
-    """initData ni verify qilib, xodimni qaytaradi. Xato bo'lsa HTTPException."""
     user_data = verify_telegram_webapp_data(init_data, settings.TELEGRAM_BOT_TOKEN)
     if user_data is None:
         raise HTTPException(status_code=403, detail="Telegram ma'lumotlari noto'g'ri")
 
     telegram_user_id = str(user_data.get("id"))
-
     employee = await db.scalar(
         select(Employee)
         .options(selectinload(Employee.branch), selectinload(Employee.user))
@@ -102,7 +101,6 @@ async def _get_employee_by_init_data(init_data: str, db: AsyncSession) -> Employ
 # ─── Yordamchi: masofa hisoblash ─────────────────────────────────────────────
 
 def _calc_distance(employee: Employee, lat: float, lon: float) -> float | None:
-    """Branch ga nisbatan masofani metrda qaytaradi. Branch yo'q bo'lsa None."""
     if (
         employee.branch
         and employee.branch.latitude is not None
@@ -123,43 +121,96 @@ def _calc_distance(employee: Employee, lat: float, lon: float) -> float | None:
 # ─── Yordamchi: rasm saqlash ─────────────────────────────────────────────────
 
 def _save_photo(employee_id: int, photo_base64: str, prefix: str = "") -> str | None:
-    """Base64 rasmni diskka saqlaydi, yo'lini qaytaradi."""
     try:
         media_dir = os.path.join(settings.MEDIA_DIR, "attendance")
         os.makedirs(media_dir, exist_ok=True)
 
-        now = datetime.now(tz=TZ)
-        tag = f"_{prefix}" if prefix else ""
+        now      = datetime.now(tz=TZ)
+        tag      = f"_{prefix}" if prefix else ""
         filename = f"{employee_id}{tag}_{now.strftime('%Y%m%d_%H%M%S')}.jpg"
-        file_path = os.path.join(media_dir, filename)
+        file_path= os.path.join(media_dir, filename)
 
-        img_data = base64.b64decode(photo_base64)
         with open(file_path, "wb") as f:
-            f.write(img_data)
+            f.write(base64.b64decode(photo_base64))
 
         return f"attendance/{filename}"
     except Exception:
         return None
 
 
+# ─── Yordamchi: overtime bonus yaratish ──────────────────────────────────────
+
+async def _create_overtime_bonus(
+    db: AsyncSession,
+    employee: Employee,
+    attendance,
+) -> tuple[float, str] | None:
+    """
+    Dam olish kuni check_in + check_out bo'lsa overtime bonus yaratadi.
+    Idempotent — attendance_id bo'yicha tekshiradi.
+    Qaytaradi: (worked_hours, formatted_amount) yoki None.
+    """
+    from decimal import Decimal
+
+    if not attendance.check_in_time or not attendance.check_out_time:
+        return None
+    if not employee.is_off_day(attendance.date):
+        return None
+
+    # Allaqachon yaratilganmi?
+    existing = await db.scalar(
+        select(Bonus).where(
+            Bonus.attendance_id == attendance.id,
+            Bonus.bonus_type    == BonusType.holiday_work,
+            Bonus.auto_generated == True,
+        )
+    )
+    if existing:
+        return None
+
+    ci = datetime.combine(attendance.date, attendance.check_in_time)
+    co = datetime.combine(attendance.date, attendance.check_out_time)
+    worked_seconds = (co - ci).total_seconds()
+    if worked_seconds <= 0:
+        return None
+
+    worked_hours = round(worked_seconds / 3600, 4)
+    hourly_rate  = employee.get_effective_hourly_rate()
+    amount       = (hourly_rate * Decimal(str(worked_hours))).quantize(Decimal("1"))
+
+    db.add(Bonus(
+        employee_id    = employee.id,
+        amount         = amount,
+        reason         = f"Dam olish kuni ishlash: {attendance.date} ({worked_hours:.1f} soat)",
+        bonus_type     = BonusType.holiday_work,
+        period_year    = attendance.date.year,
+        period_month   = attendance.date.month,
+        auto_generated = True,
+        attendance_id  = attendance.id,
+    ))
+    await db.commit()
+
+    return worked_hours, f"{int(amount):,} so'm".replace(",", " ")
+
+
 # ─── WebApp Check-in ──────────────────────────────────────────────────────────
 
 class WebAppCheckInRequest(BaseModel):
-    init_data: str
-    photo_base64: str
-    latitude: float
-    longitude: float
+    init_data:        str
+    photo_base64:     str
+    latitude:         float
+    longitude:        float
     face_match_score: float = 0.0
-    force: bool = False   # True → geofence tekshiruvi o'tkazib yuboriladi
+    force:            bool  = False
 
 
 class WebAppCheckInResponse(BaseModel):
-    ok: bool
-    message: str
-    status: str | None = None
-    late_minutes: int = 0
-    is_holiday: bool = False
-    bonus_amount: str | None = None
+    ok:              bool
+    message:         str
+    status:          str | None = None
+    late_minutes:    int        = 0
+    is_holiday:      bool       = False
+    bonus_amount:    str | None = None
     distance_meters: float | None = None
 
 
@@ -170,7 +221,6 @@ async def webapp_check_in(
 ):
     employee = await _get_employee_by_init_data(data.init_data, db)
 
-    # Yuz tanish tekshiruvi
     FACE_THRESHOLD = 0.6
     if employee.face_photo and data.face_match_score < FACE_THRESHOLD:
         raise HTTPException(
@@ -182,13 +232,13 @@ async def webapp_check_in(
         )
 
     photo_path = _save_photo(employee.id, data.photo_base64, prefix="in")
-    local_dt = datetime.now(tz=TZ)
+    local_dt   = datetime.now(tz=TZ)
 
     check_in_req = CheckInRequest(
-        employee_id=employee.id,
-        check_in_time=local_dt.time(),
-        check_in_photo=photo_path,
-        check_in_location={"latitude": data.latitude, "longitude": data.longitude},
+        employee_id       = employee.id,
+        check_in_time     = local_dt.time(),
+        check_in_photo    = photo_path,
+        check_in_location = {"latitude": data.latitude, "longitude": data.longitude},
     )
 
     try:
@@ -200,8 +250,8 @@ async def webapp_check_in(
     if record.status == "holiday":
         from decimal import Decimal
         hourly = employee.get_effective_hourly_rate()
-        amount = (hourly * Decimal(employee.work_hours_per_day)).quantize(Decimal("0.01"))
-        bonus_amount = f"{amount:,.0f} so'm"
+        amount = (hourly * Decimal(employee.work_hours_per_day)).quantize(Decimal("1"))
+        bonus_amount = f"{int(amount):,} so'm".replace(",", " ")
 
     status_text = {
         "present": "✅ O'z vaqtida",
@@ -209,21 +259,20 @@ async def webapp_check_in(
         "holiday": "🎉 Dam olish kuni",
     }.get(record.status, "✅ Qayd etildi")
 
-    distance = _calc_distance(employee, data.latitude, data.longitude)
+    distance      = _calc_distance(employee, data.latitude, data.longitude)
     distance_text = ""
     if distance is not None:
         radius = employee.branch.radius_meters if employee.branch else 200
-        if distance <= radius:
-            distance_text = "\n📍 Ofis qamrovida"
-        else:
-            distance_text = f"\n📍 Ofisdan {distance:.0f} m uzoqda"
+        distance_text = (
+            "\n📍 Ofis qamrovida" if distance <= radius
+            else f"\n📍 Ofisdan {distance:.0f} m uzoqda"
+        )
 
     msg = (
         f"📥 *Kelish qayd etildi!*\n"
         f"📅 {local_dt.strftime('%d.%m.%Y')}\n"
         f"🕐 {record.check_in_time}\n"
-        f"{status_text}"
-        f"{distance_text}"
+        f"{status_text}{distance_text}"
     )
     if bonus_amount:
         msg += f"\n💰 Bonus: {bonus_amount}"
@@ -231,29 +280,33 @@ async def webapp_check_in(
     await send_message(employee.user.phone if employee.user else employee.telegram_user_id, msg)
 
     return WebAppCheckInResponse(
-        ok=True,
-        message="Kelish muvaffaqiyatli qayd etildi",
-        status=record.status,
-        late_minutes=record.late_minutes,
-        is_holiday=(record.status == "holiday"),
-        bonus_amount=bonus_amount,
-        distance_meters=distance,
+        ok             = True,
+        message        = "Kelish muvaffaqiyatli qayd etildi",
+        status         = record.status,
+        late_minutes   = record.late_minutes,
+        is_holiday     = (record.status == "holiday"),
+        bonus_amount   = bonus_amount,
+        distance_meters= distance,
     )
 
 
 # ─── WebApp Check-out ─────────────────────────────────────────────────────────
 
 class WebAppCheckOutRequest(BaseModel):
-    init_data: str
+    init_data:    str
     photo_base64: str
-    latitude: float
-    longitude: float
+    latitude:     float
+    longitude:    float
+    force:        bool = False
 
 
 class WebAppCheckOutResponse(BaseModel):
-    ok: bool
-    message: str
-    check_out_time: str | None = None
+    ok:              bool
+    message:         str
+    check_out_time:  str | None   = None
+    worked_hours:    float | None = None
+    overtime_hours:  float | None = None
+    overtime_bonus:  str | None   = None
     distance_meters: float | None = None
 
 
@@ -264,9 +317,8 @@ async def webapp_check_out(
 ):
     employee = await _get_employee_by_init_data(data.init_data, db)
 
-    # Bugun check-in qilganmi tekshirish
-    local_dt = datetime.now(tz=TZ)
-    today = local_dt.date()
+    local_dt  = datetime.now(tz=TZ)
+    today     = local_dt.date()
     today_att = await attendance_service.get_by_employee_date(db, employee.id, today)
 
     if not today_att or not today_att.check_in_time:
@@ -278,10 +330,10 @@ async def webapp_check_out(
     photo_path = _save_photo(employee.id, data.photo_base64, prefix="out")
 
     check_out_req = CheckOutRequest(
-        employee_id=employee.id,
-        check_out_time=local_dt.time(),
-        check_out_photo=photo_path,
-        check_out_location={"latitude": data.latitude, "longitude": data.longitude},
+        employee_id        = employee.id,
+        check_out_time     = local_dt.time(),
+        check_out_photo    = photo_path,
+        check_out_location = {"latitude": data.latitude, "longitude": data.longitude},
     )
 
     try:
@@ -289,28 +341,50 @@ async def webapp_check_out(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
-    distance = _calc_distance(employee, data.latitude, data.longitude)
+    # Ishlagan soat
+    worked_hours: float | None = None
+    if record.check_in_time and record.check_out_time:
+        ci = datetime.combine(record.date, record.check_in_time)
+        co = datetime.combine(record.date, record.check_out_time)
+        worked_hours = round((co - ci).total_seconds() / 3600, 2)
+
+    # Dam olish kuni — overtime bonus
+    overtime_hours: float | None = None
+    overtime_bonus: str | None   = None
+    result = await _create_overtime_bonus(db, employee, record)
+    if result:
+        overtime_hours, overtime_bonus = result
+
+    distance      = _calc_distance(employee, data.latitude, data.longitude)
     distance_text = ""
     if distance is not None:
         radius = employee.branch.radius_meters if employee.branch else 200
-        if distance <= radius:
-            distance_text = "\n📍 Ofis qamrovida"
-        else:
-            distance_text = f"\n📍 Ofisdan {distance:.0f} m uzoqda"
+        distance_text = (
+            "\n📍 Ofis qamrovida" if distance <= radius
+            else f"\n📍 Ofisdan {distance:.0f} m uzoqda"
+        )
 
     msg = (
         f"📤 *Ketish qayd etildi!*\n"
         f"📅 {local_dt.strftime('%d.%m.%Y')}\n"
-        f"🕐 {record.check_out_time}"
+        f"🕐 {record.check_out_time.strftime('%H:%M') if record.check_out_time else '—'}"
         f"{distance_text}"
     )
+    if worked_hours is not None:
+        msg += f"\n⏱ Ishlagan: {worked_hours:.1f} soat"
+    if overtime_bonus:
+        msg += f"\n💰 Dam olish bonusi: {overtime_bonus}"
+
     await send_message(employee.user.phone if employee.user else employee.telegram_user_id, msg)
 
     return WebAppCheckOutResponse(
-        ok=True,
-        message="Ketish muvaffaqiyatli qayd etildi",
-        check_out_time=str(record.check_out_time),
-        distance_meters=distance,
+        ok              = True,
+        message         = "Ketish muvaffaqiyatli qayd etildi",
+        check_out_time  = record.check_out_time.strftime("%H:%M:%S") if record.check_out_time else None,
+        worked_hours    = worked_hours,
+        overtime_hours  = overtime_hours,
+        overtime_bonus  = overtime_bonus,
+        distance_meters = distance,
     )
 
 
@@ -334,7 +408,7 @@ async def webapp_employee_info(
     if not employee:
         raise HTTPException(status_code=404, detail="Xodim topilmadi")
 
-    today = datetime.now(tz=TZ).date()
+    today     = datetime.now(tz=TZ).date()
     today_att = await attendance_service.get_by_employee_date(db, employee.id, today)
 
     return {
@@ -351,18 +425,17 @@ async def webapp_employee_info(
             "radius_meters":   employee.branch.radius_meters if employee.branch else 200,
             "work_start_time": str(employee.branch.work_start_time) if employee.branch else "09:00:00",
         },
-        "today_checked_in":  bool(today_att and today_att.check_in_time),
-        "today_checked_out": bool(today_att and today_att.check_out_time),
+        "today_checked_in":    bool(today_att and today_att.check_in_time),
+        "today_checked_out":   bool(today_att and today_att.check_out_time),
         "today_check_in_time": str(today_att.check_in_time) if today_att and today_att.check_in_time else None,
-        "today_check_out_time": str(today_att.check_out_time) if today_att and today_att.check_out_time else None,
-        "is_off_day":        employee.is_off_day(today),
+        "today_check_out_time":str(today_att.check_out_time) if today_att and today_att.check_out_time else None,
+        "is_off_day":          employee.is_off_day(today),
     }
 
 
 # ─── Bot webhook ──────────────────────────────────────────────────────────────
 
 async def _send_main_menu(chat_id: str, webapp_url: str) -> None:
-    """Foydalanuvchiga 2 ta tugmali asosiy menyuni yuboradi."""
     import httpx
     async with httpx.AsyncClient() as client:
         await client.post(
@@ -373,18 +446,8 @@ async def _send_main_menu(chat_id: str, webapp_url: str) -> None:
                 "parse_mode": "Markdown",
                 "reply_markup": {
                     "inline_keyboard": [
-                        [
-                            {
-                                "text": "📥 Kelishni qayd etish",
-                                "web_app": {"url": f"{webapp_url}?mode=checkin"},
-                            }
-                        ],
-                        [
-                            {
-                                "text": "📤 Ketishni qayd etish",
-                                "web_app": {"url": f"{webapp_url}?mode=checkout"},
-                            }
-                        ],
+                        [{"text": "📥 Kelishni qayd etish",  "web_app": {"url": f"{webapp_url}?mode=checkin"}}],
+                        [{"text": "📤 Ketishni qayd etish",  "web_app": {"url": f"{webapp_url}?mode=checkout"}}],
                     ]
                 },
             },
@@ -402,13 +465,13 @@ async def telegram_webhook(
         if x_telegram_bot_api_secret_token != settings.TELEGRAM_SECRET:
             raise HTTPException(status_code=403, detail="Invalid secret token")
 
-    body = await request.json()
+    body    = await request.json()
     message = body.get("message") or body.get("edited_message")
     if not message:
         return {"ok": True}
 
     chat_id = str(message["chat"]["id"])
-    text = message.get("text", "").strip()
+    text    = message.get("text", "").strip()
 
     employee = await db.scalar(
         select(Employee)
@@ -418,24 +481,20 @@ async def telegram_webhook(
 
     webapp_url = f"{settings.BASE_URL}/api/telegram/webapp/checkin"
 
-    # ── /start ────────────────────────────────────────────────────────────────
     if text.startswith("/start"):
         if not employee:
             await send_message(chat_id, "❌ Siz tizimda ro'yxatdan o'tmagansiz. HR bo'limiga murojaat qiling.")
             return {"ok": True}
-
         await _send_main_menu(chat_id, webapp_url)
         return {"ok": True}
 
-    # ── Ro'yxatdan o'tmagan ───────────────────────────────────────────────────
     if not employee:
         await send_message(chat_id, "❌ Siz tizimda ro'yxatdan o'tmagansiz.")
         return {"ok": True}
 
-    # ── /status ───────────────────────────────────────────────────────────────
-    utc_dt = datetime.fromtimestamp(message.get("date", 0), tz=timezone.utc)
+    utc_dt   = datetime.fromtimestamp(message.get("date", 0), tz=timezone.utc)
     local_dt = utc_dt.astimezone(TZ)
-    today = local_dt.date()
+    today    = local_dt.date()
 
     if text.lower() in ("/status", "holat"):
         summary = await attendance_service.get_summary(db, employee.id, today.year, today.month)
