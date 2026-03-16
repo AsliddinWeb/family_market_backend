@@ -260,8 +260,24 @@ async def check_in(
 
 
 async def check_out(db: AsyncSession, data: CheckOutRequest) -> Attendance:
+    # Avval bugun tekshiramiz, keyin oxirgi ochiq attendanceni topamiz
     today = datetime.now(tz=TZ).date()
     record = await get_by_employee_date(db, data.employee_id, today)
+
+    if not record:
+        # Bugun yo'q — check_in bor, check_out yo'q bo'lgan oxirgi yozuvni topamiz
+        from sqlalchemy import and_
+        record = await db.scalar(
+            select(Attendance)
+            .where(
+                Attendance.employee_id == data.employee_id,
+                Attendance.check_in_time.isnot(None),
+                Attendance.check_out_time.is_(None),
+            )
+            .order_by(Attendance.date.desc())
+            .limit(1)
+        )
+
     if not record:
         raise ValueError("Check-in topilmadi")
 
