@@ -161,16 +161,8 @@ async def update_attendance(
     for field, value in data.model_dump(exclude_none=True).items():
         setattr(record, field, value)
     await db.commit()
-    # refresh o'rniga selectinload bilan qayta yuklaymiz (MissingGreenlet fix)
-    result = await db.scalar(
-        select(Attendance)
-        .options(
-            selectinload(Attendance.employee).selectinload(Employee.branch),
-            selectinload(Attendance.employee).selectinload(Employee.user),
-        )
-        .where(Attendance.id == record.id)
-    )
-    return result
+    await db.refresh(record)
+    return record
 
 
 async def delete_attendance(db: AsyncSession, record: Attendance) -> None:
@@ -255,8 +247,16 @@ async def check_in(
         await _maybe_create_holiday_bonus(db, employee, record)
 
     await db.commit()
-    await db.refresh(record)
-    return record
+    # refresh o'rniga selectinload bilan qayta yuklaymiz (MissingGreenlet fix)
+    result = await db.scalar(
+        select(Attendance)
+        .options(
+            selectinload(Attendance.employee).selectinload(Employee.branch),
+            selectinload(Attendance.employee).selectinload(Employee.user),
+        )
+        .where(Attendance.id == record.id)
+    )
+    return result
 
 
 async def check_out(db: AsyncSession, data: CheckOutRequest) -> Attendance:
@@ -269,8 +269,16 @@ async def check_out(db: AsyncSession, data: CheckOutRequest) -> Attendance:
     record.check_out_photo = data.check_out_photo
     record.check_out_location = data.check_out_location
     await db.commit()
-    await db.refresh(record)
-    return record
+    # refresh o'rniga selectinload bilan qayta yuklaymiz (MissingGreenlet fix)
+    result = await db.scalar(
+        select(Attendance)
+        .options(
+            selectinload(Attendance.employee).selectinload(Employee.branch),
+            selectinload(Attendance.employee).selectinload(Employee.user),
+        )
+        .where(Attendance.id == record.id)
+    )
+    return result
 
 
 async def get_summary(
