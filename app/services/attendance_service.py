@@ -63,7 +63,6 @@ async def _maybe_create_holiday_bonus(
     if not employee.is_off_day(today):
         return None
 
-    # Allaqachon yaratilganmi?
     existing = await db.scalar(
         select(Bonus).where(
             Bonus.attendance_id == attendance.id,
@@ -73,7 +72,6 @@ async def _maybe_create_holiday_bonus(
     if existing:
         return None
 
-    # Soatlik stavka × ish soati
     hourly = employee.get_effective_hourly_rate()
     hours = Decimal(employee.work_hours_per_day)
     amount = (hourly * hours).quantize(Decimal("0.01"))
@@ -163,8 +161,16 @@ async def update_attendance(
     for field, value in data.model_dump(exclude_none=True).items():
         setattr(record, field, value)
     await db.commit()
-    await db.refresh(record)
-    return record
+    # refresh o'rniga selectinload bilan qayta yuklaymiz (MissingGreenlet fix)
+    result = await db.scalar(
+        select(Attendance)
+        .options(
+            selectinload(Attendance.employee).selectinload(Employee.branch),
+            selectinload(Attendance.employee).selectinload(Employee.user),
+        )
+        .where(Attendance.id == record.id)
+    )
+    return result
 
 
 async def delete_attendance(db: AsyncSession, record: Attendance) -> None:
@@ -225,10 +231,18 @@ async def check_in(
                 )
 
     # Kechikish hisoblash
+    # Prioritet: xodimning shaxsiy vaqti → filial vaqti → kechikish 0
     late_minutes = 0
-    if employee.branch:
-        work_start: time = employee.branch.work_start_time
-        ci: time = data.check_in_time or datetime.now(tz=TZ).time()
+    ci: time = data.check_in_time or datetime.now(tz=TZ).time()
+
+    if employee.work_start_time:
+        # Xodimning shaxsiy kelish vaqti belgilangan
+        work_start = employee.work_start_time
+        if ci > work_start:
+            late_minutes = (ci.hour * 60 + ci.minute) - (work_start.hour * 60 + work_start.minute)
+    elif employee.branch and employee.branch.work_start_time:
+        # Filial kelish vaqtidan hisoblash
+        work_start = employee.branch.work_start_time
         if ci > work_start:
             late_minutes = (ci.hour * 60 + ci.minute) - (work_start.hour * 60 + work_start.minute)
 
@@ -241,7 +255,7 @@ async def check_in(
         status = AttendanceStatus.late if late_minutes > 0 else AttendanceStatus.present
 
     if record:
-        record.check_in_time = data.check_in_time or datetime.now(tz=TZ).time()
+        record.check_in_time = ci
         record.check_in_photo = _save_attendance_photo(data.check_in_photo, data.employee_id, 'in')
         record.check_in_location = data.check_in_location
         record.late_minutes = late_minutes
@@ -251,7 +265,7 @@ async def check_in(
         record = Attendance(
             employee_id=data.employee_id,
             date=today,
-            check_in_time=data.check_in_time or datetime.now(tz=TZ).time(),
+            check_in_time=ci,
             check_in_photo=_save_attendance_photo(data.check_in_photo, data.employee_id, 'in'),
             check_in_location=data.check_in_location,
             late_minutes=late_minutes,
@@ -286,7 +300,6 @@ async def check_out(db: AsyncSession, data: CheckOutRequest) -> Attendance:
 
     if not record:
         # Bugun yo'q — check_in bor, check_out yo'q bo'lgan oxirgi yozuvni topamiz
-        from sqlalchemy import and_
         record = await db.scalar(
             select(Attendance)
             .where(

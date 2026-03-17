@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, time
 from decimal import Decimal
 from typing import List
 
@@ -25,6 +25,8 @@ class EmployeeCreate(BaseModel):
     base_salary: Decimal
 
     hourly_rate: Decimal | None = None
+    work_start_time: time | None = None
+    work_end_time: time | None = None
     work_hours_per_day: int = 8
     off_days: List[str] = ["saturday", "sunday"]
     custom_off_days: List[str] = []
@@ -73,6 +75,8 @@ class EmployeeUpdate(BaseModel):
     hire_date: date | None = None
     base_salary: Decimal | None = None
     hourly_rate: Decimal | None = None
+    work_start_time: time | None = None
+    work_end_time: time | None = None
     work_hours_per_day: int | None = None
     off_days: List[str] | None = None
     custom_off_days: List[str] | None = None   # aniq sana dam olish kunlari
@@ -108,6 +112,8 @@ class EmployeeOut(BaseModel):
     hire_date: date | None = None
     base_salary: Decimal
     hourly_rate: Decimal | None = None
+    work_start_time: time | None = None
+    work_end_time: time | None = None
     work_hours_per_day: int = 8
     off_days: List[str] = ["saturday", "sunday"]
     custom_off_days: List[str] = []

@@ -1,8 +1,8 @@
 import enum
-from datetime import date
+from datetime import date, time
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, ForeignKey, Integer, JSON, Numeric, String
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, JSON, Numeric, String, Time
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -50,6 +50,16 @@ class Employee(Base, TimestampMixin, SoftDeleteMixin):
     off_days: Mapped[list] = mapped_column(
         JSON, default=["saturday", "sunday"],
         comment="Haftalik dam olish kunlari: ['saturday', 'sunday']"
+    )
+
+    # Xodimning shaxsiy kelish/ketish vaqti
+    work_start_time: Mapped[time | None] = mapped_column(
+        Time, nullable=True,
+        comment="Xodimning shaxsiy kelish vaqti. None bo'lsa filial vaqti ishlatiladi"
+    )
+    work_end_time: Mapped[time | None] = mapped_column(
+        Time, nullable=True,
+        comment="Xodimning shaxsiy ketish vaqti. None bo'lsa filial vaqti ishlatiladi"
     )
 
     # Aniq sana bo'yicha overridelar

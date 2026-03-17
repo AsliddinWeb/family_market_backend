@@ -137,7 +137,6 @@ async def upload_photo(
     with open(filepath, "wb") as f:
         f.write(content)
 
-    # Eski rasmni o'chirish
     if emp.photo:
         old_path = os.path.join(settings.MEDIA_DIR, emp.photo)
         if os.path.exists(old_path):
@@ -162,7 +161,7 @@ async def delete_employee(
     await employee_service.delete_employee(db, emp)
 
 
-# ── Helpers ──────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _to_out(emp) -> dict:
     return {
@@ -189,6 +188,8 @@ def _to_out(emp) -> dict:
         "hire_date":          str(emp.hire_date) if emp.hire_date else None,
         "base_salary":        emp.base_salary,
         "hourly_rate":        emp.hourly_rate,
+        "work_start_time":    str(emp.work_start_time) if emp.work_start_time else None,
+        "work_end_time":      str(emp.work_end_time) if emp.work_end_time else None,
         "work_hours_per_day": emp.work_hours_per_day,
         "off_days":           emp.off_days,
         "custom_off_days":    emp.custom_off_days  if emp.custom_off_days  is not None else [],

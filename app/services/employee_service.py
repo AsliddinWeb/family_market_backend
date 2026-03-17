@@ -74,6 +74,8 @@ async def create_employee(db: AsyncSession, data: EmployeeCreate) -> Employee:
         hire_date=data.hire_date,
         base_salary=data.base_salary,
         hourly_rate=data.hourly_rate,
+        work_start_time=data.work_start_time,
+        work_end_time=data.work_end_time,
         work_hours_per_day=data.work_hours_per_day,
         off_days=data.off_days,
         telegram_user_id=data.telegram_user_id,
@@ -93,8 +95,8 @@ async def update_employee(
     employee_fields = {
         "branch_id", "department_id", "position", "employment_type",
         "hire_date", "base_salary", "telegram_user_id", "photo", "is_active",
-        "hourly_rate", "work_hours_per_day", "off_days", "face_photo",
-        "custom_off_days", "custom_work_days",
+        "hourly_rate", "work_start_time", "work_end_time", "work_hours_per_day",
+        "off_days", "face_photo", "custom_off_days", "custom_work_days",
     }
     user_fields = {"full_name", "role"}
 
