@@ -208,7 +208,7 @@ async def check_in(
     late_minutes = 0
     if employee.branch:
         work_start: time = employee.branch.work_start_time
-        ci: time = data.check_in_time
+        ci: time = data.check_in_time or datetime.now(tz=TZ).time()
         if ci > work_start:
             late_minutes = (ci.hour * 60 + ci.minute) - (work_start.hour * 60 + work_start.minute)
 
@@ -221,7 +221,7 @@ async def check_in(
         status = AttendanceStatus.late if late_minutes > 0 else AttendanceStatus.present
 
     if record:
-        record.check_in_time = data.check_in_time
+        record.check_in_time = data.check_in_time or datetime.now(tz=TZ).time()
         record.check_in_photo = data.check_in_photo
         record.check_in_location = data.check_in_location
         record.late_minutes = late_minutes
@@ -231,7 +231,7 @@ async def check_in(
         record = Attendance(
             employee_id=data.employee_id,
             date=today,
-            check_in_time=data.check_in_time,
+            check_in_time=data.check_in_time or datetime.now(tz=TZ).time(),
             check_in_photo=data.check_in_photo,
             check_in_location=data.check_in_location,
             late_minutes=late_minutes,
@@ -281,7 +281,7 @@ async def check_out(db: AsyncSession, data: CheckOutRequest) -> Attendance:
     if not record:
         raise ValueError("Check-in topilmadi")
 
-    record.check_out_time = data.check_out_time
+    record.check_out_time = data.check_out_time or datetime.now(tz=TZ).time()
     record.check_out_photo = data.check_out_photo
     record.check_out_location = data.check_out_location
     await db.commit()

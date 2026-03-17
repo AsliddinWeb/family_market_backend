@@ -94,17 +94,17 @@ def serialize_attendance(rec) -> AttendanceOut:
 
 
 class CheckInRequest(BaseModel):
-    """Telegram bot orqali check-in"""
+    """Telegram bot / Kabinet orqali check-in"""
     employee_id: int
-    check_in_time: time
+    check_in_time: time | None = None   # None bo'lsa backend TZ vaqtini ishlatadi
     check_in_photo: str | None = None
     check_in_location: dict[str, Any] | None = None
 
 
 class CheckOutRequest(BaseModel):
-    """Telegram bot orqali check-out"""
+    """Telegram bot / Kabinet orqali check-out"""
     employee_id: int
-    check_out_time: time
+    check_out_time: time | None = None  # None bo'lsa backend TZ vaqtini ishlatadi
     check_out_photo: str | None = None
     check_out_location: dict[str, Any] | None = None
 
