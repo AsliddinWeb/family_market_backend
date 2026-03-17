@@ -36,7 +36,6 @@ async def list_attendance(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # employee roli faqat o'z davomatini ko'ra oladi
     if current_user.role == UserRole.employee:
         user_with_emp = await db.scalar(
             select(User).options(selectinload(User.employee)).where(User.id == current_user.id)
@@ -71,7 +70,10 @@ async def check_in(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    return await attendance_service.check_in(db, data)
+    try:
+        return await attendance_service.check_in(db, data)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.post("/check-out", response_model=AttendanceOut)
@@ -83,7 +85,7 @@ async def check_out(
     try:
         return await attendance_service.check_out(db, data)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.get("/summary", response_model=AttendanceSummary)
@@ -94,7 +96,6 @@ async def get_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # employee faqat o'zini ko'ra oladi
     if current_user.role == UserRole.employee:
         user_with_emp = await db.scalar(
             select(User).options(selectinload(User.employee)).where(User.id == current_user.id)
