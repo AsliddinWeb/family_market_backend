@@ -1,4 +1,6 @@
+import base64
 import math
+import os
 from calendar import monthrange
 from datetime import datetime, time
 from decimal import Decimal
@@ -7,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.config import TZ
+from app.core.config import TZ, settings
 from app.models.attendance import Attendance, AttendanceSource, AttendanceStatus
 from app.models.employee import Employee
 from app.models.salary import Bonus, BonusType
@@ -170,6 +172,24 @@ async def delete_attendance(db: AsyncSession, record: Attendance) -> None:
     await db.commit()
 
 
+def _save_attendance_photo(photo_base64: str | None, employee_id: int, prefix: str = "in") -> str | None:
+    """Base64 rasmni faylga saqlaydi, path qaytaradi."""
+    if not photo_base64:
+        return None
+    try:
+        media_dir = os.path.join(settings.MEDIA_DIR, "attendance")
+        os.makedirs(media_dir, exist_ok=True)
+        now_str = datetime.now(tz=TZ).strftime("%Y%m%d_%H%M%S")
+        filename = f"{employee_id}_{prefix}_{now_str}.jpg"
+        file_path = os.path.join(media_dir, filename)
+        img_data = base64.b64decode(photo_base64)
+        with open(file_path, "wb") as f:
+            f.write(img_data)
+        return f"attendance/{filename}"
+    except Exception:
+        return None
+
+
 async def check_in(
     db: AsyncSession,
     data: CheckInRequest,
@@ -222,21 +242,21 @@ async def check_in(
 
     if record:
         record.check_in_time = data.check_in_time or datetime.now(tz=TZ).time()
-        record.check_in_photo = data.check_in_photo
+        record.check_in_photo = _save_attendance_photo(data.check_in_photo, data.employee_id, 'in')
         record.check_in_location = data.check_in_location
         record.late_minutes = late_minutes
         record.status = status
-        record.source = AttendanceSource.telegram
+        record.source = AttendanceSource(data.source) if data.source in AttendanceSource._value2member_map_ else AttendanceSource.web
     else:
         record = Attendance(
             employee_id=data.employee_id,
             date=today,
             check_in_time=data.check_in_time or datetime.now(tz=TZ).time(),
-            check_in_photo=data.check_in_photo,
+            check_in_photo=_save_attendance_photo(data.check_in_photo, data.employee_id, 'in'),
             check_in_location=data.check_in_location,
             late_minutes=late_minutes,
             status=status,
-            source=AttendanceSource.telegram,
+            source=AttendanceSource(data.source) if data.source in AttendanceSource._value2member_map_ else AttendanceSource.web,
         )
         db.add(record)
 
@@ -282,8 +302,9 @@ async def check_out(db: AsyncSession, data: CheckOutRequest) -> Attendance:
         raise ValueError("Check-in topilmadi")
 
     record.check_out_time = data.check_out_time or datetime.now(tz=TZ).time()
-    record.check_out_photo = data.check_out_photo
+    record.check_out_photo = _save_attendance_photo(data.check_out_photo, data.employee_id, 'out')
     record.check_out_location = data.check_out_location
+    record.source = AttendanceSource(data.source) if data.source in AttendanceSource._value2member_map_ else AttendanceSource.web
     await db.commit()
     # refresh o'rniga selectinload bilan qayta yuklaymiz (MissingGreenlet fix)
     result = await db.scalar(

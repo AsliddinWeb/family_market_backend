@@ -27,7 +27,8 @@ class AttendanceStatus(str, enum.Enum):
 
 class AttendanceSource(str, enum.Enum):
     telegram = "telegram"
-    manual = "manual"
+    manual   = "manual"
+    web      = "web"
 
 
 class Attendance(Base, TimestampMixin):
